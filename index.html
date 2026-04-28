@@ -1,0 +1,1341 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Parcelinhas</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js">
+// ── Gastos Fixos ───────────────────────────────────────────────
+let fixedItems   = [];
+let chartFixInst = null;
+let unsubFixed   = null;
+
+function colFixed() {
+  return db.collection('users').doc(userId).collection('fixos').doc(String(currentYear)).collection('items');
+}
+
+function startListeningFixed() {
+  if (unsubFixed) unsubFixed();
+  unsubFixed = colFixed().orderBy('createdAt', 'asc').onSnapshot(snap => {
+    fixedItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderFixed();
+  });
+}
+
+async function addFixed() {
+  const desc  = document.getElementById('fix-desc').value.trim();
+  const valor = parseFloat(document.getElementById('fix-valor').value);
+  if (!desc || isNaN(valor) || valor <= 0) { document.getElementById('fix-desc').focus(); return; }
+  const pv     = Math.round(valor * 100) / 100;
+  const values = Array(12).fill(pv);
+  setSaving('Salvando…', true);
+  try {
+    await colFixed().add({ desc, defaultValue: pv, values, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    setSaving('Salvo ✓', true);
+    setTimeout(() => setSaving(''), 2000);
+  } catch(e) { setSaving('Erro ao salvar.'); }
+  document.getElementById('fix-desc').value  = '';
+  document.getElementById('fix-valor').value = '';
+  document.getElementById('fix-desc').focus();
+}
+
+async function deleteFixed(id) {
+  if (!confirm('Remover este gasto fixo?')) return;
+  setSaving('Removendo…', true);
+  await colFixed().doc(id).delete();
+  setSaving('Removido ✓', true);
+  setTimeout(() => setSaving(''), 2000);
+}
+
+async function updateFixedCell(id, monthIdx, newVal) {
+  const item = fixedItems.find(f => f.id === id);
+  if (!item) return;
+  const values = [...item.values];
+  values[monthIdx] = Math.round((parseFloat(newVal) || 0) * 100) / 100;
+  setSaving('Salvando…', true);
+  try {
+    await colFixed().doc(id).update({ values });
+    setSaving('Salvo ✓', true);
+    setTimeout(() => setSaving(''), 2000);
+  } catch(e) { setSaving('Erro ao salvar.'); }
+}
+
+function startEditCell(el, id, monthIdx, currentVal) {
+  if (el.querySelector('input')) return;
+  const inp = document.createElement('input');
+  inp.type  = 'number';
+  inp.step  = '0.01';
+  inp.value = currentVal > 0 ? currentVal.toFixed(2) : '';
+  inp.placeholder = '0,00';
+  el.appendChild(inp);
+  inp.focus();
+  inp.select();
+  function commit() {
+    const v = parseFloat(inp.value);
+    if (!isNaN(v) && v !== currentVal) updateFixedCell(id, monthIdx, v);
+    inp.remove();
+  }
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { inp.blur(); }
+    if (e.key === 'Escape') { inp.remove(); }
+    e.stopPropagation();
+  });
+}
+
+function renderFixed() {
+  renderMetricsFixed();
+  renderTableFixed();
+  renderChartFixed();
+}
+
+function renderMetricsFixed() {
+  const totals   = MESES.map((_, i) => fixedItems.reduce((s, f) => s + (f.values[i] || 0), 0));
+  const totalAno = totals.reduce((a, b) => a + b, 0);
+  const mi       = new Date().getMonth();
+  const maiorIdx = totals.indexOf(Math.max(...totals));
+  document.getElementById('metrics-fixos').innerHTML = [
+    ['Total fixo ' + currentYear, fmtRaw(totalAno)],
+    [MESES[mi] + ' — mês atual',  fmtRaw(totals[mi])],
+    ['Contas cadastradas',         fixedItems.length],
+    ['Mês mais pesado',            totals[maiorIdx] > 0 ? MESES[maiorIdx] : '—'],
+  ].map(([label, value]) => `
+    <div class="metric-card">
+      <div class="label">${label}</div>
+      <div class="value">${value}</div>
+    </div>`).join('');
+}
+
+function renderTableFixed() {
+  const t = document.getElementById('fixed-table');
+  const b = 'border-bottom:1px solid var(--border);';
+  const thS = `font-size:11px;font-weight:600;color:var(--text2);padding:7px 8px;${b}`;
+  let html = `<thead><tr>
+    <th style="${thS}text-align:left;">Descrição</th>
+    ${MESES.map(m => `<th style="${thS}text-align:right;">${m}</th>`).join('')}
+    <th style="${b}width:24px;"></th>
+  </tr></thead>`;
+
+  if (fixedItems.length === 0) {
+    html += `<tbody><tr><td colspan="${2+MESES.length}" class="empty-state">Nenhum gasto fixo em ${currentYear}. Adicione o primeiro acima ↑</td></tr></tbody>`;
+  } else {
+    html += '<tbody>' + fixedItems.map(f => `
+      <tr>
+        <td style="${b}font-size:13px;">${f.desc}</td>
+        ${f.values.map((v, i) => `
+          <td class="editable-cell" style="${b}position:relative;" onclick="startEditCell(this,'${f.id}',${i},${v})">
+            ${fmtR(v)}
+          </td>`).join('')}
+        <td style="${b}"><button class="del-btn" onclick="deleteFixed('${f.id}')" title="Remover">&times;</button></td>
+      </tr>`).join('') + '</tbody>';
+  }
+
+  const totals = MESES.map((_, i) => fixedItems.reduce((s, f) => s + (f.values[i] || 0), 0));
+  html += `<tfoot><tr>
+    <td>Total mensal</td>
+    ${totals.map(v => `<td style="text-align:right;color:${v > 0 ? 'var(--text)' : 'var(--text3)'};">${fmtR(v)}</td>`).join('')}
+    <td></td>
+  </tr></tfoot>`;
+  t.innerHTML = html;
+}
+
+function renderChartFixed() {
+  const wrap = document.getElementById('chart-wrap-fixos');
+  if (fixedItems.length === 0) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  if (chartFixInst) { chartFixInst.destroy(); chartFixInst = null; }
+  const totals = MESES.map((_, i) => Math.round(fixedItems.reduce((s, f) => s + (f.values[i] || 0), 0) * 100) / 100);
+  chartFixInst = new Chart(document.getElementById('chart-fixos'), {
+    type: 'line',
+    data: {
+      labels: MESES,
+      datasets: [{
+        label: 'Total fixo',
+        data: totals,
+        borderColor: '#2ea043',
+        backgroundColor: 'rgba(46,160,67,0.1)',
+        borderWidth: 2,
+        pointBackgroundColor: '#2ea043',
+        pointRadius: 4,
+        fill: true,
+        tension: 0.3,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor:'#161b22', borderColor:'#30363d', borderWidth:1,
+          titleColor:'#e6edf3', bodyColor:'#8b949e',
+          callbacks: { label: ctx => `Total: R$\u00a0${ctx.raw.toFixed(2).replace('.', ',')}` }
+        }
+      },
+      scales: {
+        x: { grid:{display:false}, ticks:{font:{size:11},color:'#8b949e'}, border:{color:'#30363d'} },
+        y: { border:{display:false}, grid:{color:'#21262d'},
+          ticks:{font:{size:11},color:'#8b949e', callback: v => 'R$' + v.toLocaleString('pt-BR')} }
+      }
+    }
+  });
+}
+</script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js">
+// ── Gastos Fixos ───────────────────────────────────────────────
+let fixedItems   = [];
+let chartFixInst = null;
+let unsubFixed   = null;
+
+function colFixed() {
+  return db.collection('users').doc(userId).collection('fixos').doc(String(currentYear)).collection('items');
+}
+
+function startListeningFixed() {
+  if (unsubFixed) unsubFixed();
+  unsubFixed = colFixed().orderBy('createdAt', 'asc').onSnapshot(snap => {
+    fixedItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderFixed();
+  });
+}
+
+async function addFixed() {
+  const desc  = document.getElementById('fix-desc').value.trim();
+  const valor = parseFloat(document.getElementById('fix-valor').value);
+  if (!desc || isNaN(valor) || valor <= 0) { document.getElementById('fix-desc').focus(); return; }
+  const pv     = Math.round(valor * 100) / 100;
+  const values = Array(12).fill(pv);
+  setSaving('Salvando…', true);
+  try {
+    await colFixed().add({ desc, defaultValue: pv, values, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    setSaving('Salvo ✓', true);
+    setTimeout(() => setSaving(''), 2000);
+  } catch(e) { setSaving('Erro ao salvar.'); }
+  document.getElementById('fix-desc').value  = '';
+  document.getElementById('fix-valor').value = '';
+  document.getElementById('fix-desc').focus();
+}
+
+async function deleteFixed(id) {
+  if (!confirm('Remover este gasto fixo?')) return;
+  setSaving('Removendo…', true);
+  await colFixed().doc(id).delete();
+  setSaving('Removido ✓', true);
+  setTimeout(() => setSaving(''), 2000);
+}
+
+async function updateFixedCell(id, monthIdx, newVal) {
+  const item = fixedItems.find(f => f.id === id);
+  if (!item) return;
+  const values = [...item.values];
+  values[monthIdx] = Math.round((parseFloat(newVal) || 0) * 100) / 100;
+  setSaving('Salvando…', true);
+  try {
+    await colFixed().doc(id).update({ values });
+    setSaving('Salvo ✓', true);
+    setTimeout(() => setSaving(''), 2000);
+  } catch(e) { setSaving('Erro ao salvar.'); }
+}
+
+function startEditCell(el, id, monthIdx, currentVal) {
+  if (el.querySelector('input')) return;
+  const inp = document.createElement('input');
+  inp.type  = 'number';
+  inp.step  = '0.01';
+  inp.value = currentVal > 0 ? currentVal.toFixed(2) : '';
+  inp.placeholder = '0,00';
+  el.appendChild(inp);
+  inp.focus();
+  inp.select();
+  function commit() {
+    const v = parseFloat(inp.value);
+    if (!isNaN(v) && v !== currentVal) updateFixedCell(id, monthIdx, v);
+    inp.remove();
+  }
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { inp.blur(); }
+    if (e.key === 'Escape') { inp.remove(); }
+    e.stopPropagation();
+  });
+}
+
+function renderFixed() {
+  renderMetricsFixed();
+  renderTableFixed();
+  renderChartFixed();
+}
+
+function renderMetricsFixed() {
+  const totals   = MESES.map((_, i) => fixedItems.reduce((s, f) => s + (f.values[i] || 0), 0));
+  const totalAno = totals.reduce((a, b) => a + b, 0);
+  const mi       = new Date().getMonth();
+  const maiorIdx = totals.indexOf(Math.max(...totals));
+  document.getElementById('metrics-fixos').innerHTML = [
+    ['Total fixo ' + currentYear, fmtRaw(totalAno)],
+    [MESES[mi] + ' — mês atual',  fmtRaw(totals[mi])],
+    ['Contas cadastradas',         fixedItems.length],
+    ['Mês mais pesado',            totals[maiorIdx] > 0 ? MESES[maiorIdx] : '—'],
+  ].map(([label, value]) => `
+    <div class="metric-card">
+      <div class="label">${label}</div>
+      <div class="value">${value}</div>
+    </div>`).join('');
+}
+
+function renderTableFixed() {
+  const t = document.getElementById('fixed-table');
+  const b = 'border-bottom:1px solid var(--border);';
+  const thS = `font-size:11px;font-weight:600;color:var(--text2);padding:7px 8px;${b}`;
+  let html = `<thead><tr>
+    <th style="${thS}text-align:left;">Descrição</th>
+    ${MESES.map(m => `<th style="${thS}text-align:right;">${m}</th>`).join('')}
+    <th style="${b}width:24px;"></th>
+  </tr></thead>`;
+
+  if (fixedItems.length === 0) {
+    html += `<tbody><tr><td colspan="${2+MESES.length}" class="empty-state">Nenhum gasto fixo em ${currentYear}. Adicione o primeiro acima ↑</td></tr></tbody>`;
+  } else {
+    html += '<tbody>' + fixedItems.map(f => `
+      <tr>
+        <td style="${b}font-size:13px;">${f.desc}</td>
+        ${f.values.map((v, i) => `
+          <td class="editable-cell" style="${b}position:relative;" onclick="startEditCell(this,'${f.id}',${i},${v})">
+            ${fmtR(v)}
+          </td>`).join('')}
+        <td style="${b}"><button class="del-btn" onclick="deleteFixed('${f.id}')" title="Remover">&times;</button></td>
+      </tr>`).join('') + '</tbody>';
+  }
+
+  const totals = MESES.map((_, i) => fixedItems.reduce((s, f) => s + (f.values[i] || 0), 0));
+  html += `<tfoot><tr>
+    <td>Total mensal</td>
+    ${totals.map(v => `<td style="text-align:right;color:${v > 0 ? 'var(--text)' : 'var(--text3)'};">${fmtR(v)}</td>`).join('')}
+    <td></td>
+  </tr></tfoot>`;
+  t.innerHTML = html;
+}
+
+function renderChartFixed() {
+  const wrap = document.getElementById('chart-wrap-fixos');
+  if (fixedItems.length === 0) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  if (chartFixInst) { chartFixInst.destroy(); chartFixInst = null; }
+  const totals = MESES.map((_, i) => Math.round(fixedItems.reduce((s, f) => s + (f.values[i] || 0), 0) * 100) / 100);
+  chartFixInst = new Chart(document.getElementById('chart-fixos'), {
+    type: 'line',
+    data: {
+      labels: MESES,
+      datasets: [{
+        label: 'Total fixo',
+        data: totals,
+        borderColor: '#2ea043',
+        backgroundColor: 'rgba(46,160,67,0.1)',
+        borderWidth: 2,
+        pointBackgroundColor: '#2ea043',
+        pointRadius: 4,
+        fill: true,
+        tension: 0.3,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor:'#161b22', borderColor:'#30363d', borderWidth:1,
+          titleColor:'#e6edf3', bodyColor:'#8b949e',
+          callbacks: { label: ctx => `Total: R$\u00a0${ctx.raw.toFixed(2).replace('.', ',')}` }
+        }
+      },
+      scales: {
+        x: { grid:{display:false}, ticks:{font:{size:11},color:'#8b949e'}, border:{color:'#30363d'} },
+        y: { border:{display:false}, grid:{color:'#21262d'},
+          ticks:{font:{size:11},color:'#8b949e', callback: v => 'R$' + v.toLocaleString('pt-BR')} }
+      }
+    }
+  });
+}
+</script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js">
+// ── Gastos Fixos ───────────────────────────────────────────────
+let fixedItems   = [];
+let chartFixInst = null;
+let unsubFixed   = null;
+
+function colFixed() {
+  return db.collection('users').doc(userId).collection('fixos').doc(String(currentYear)).collection('items');
+}
+
+function startListeningFixed() {
+  if (unsubFixed) unsubFixed();
+  unsubFixed = colFixed().orderBy('createdAt', 'asc').onSnapshot(snap => {
+    fixedItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderFixed();
+  });
+}
+
+async function addFixed() {
+  const desc  = document.getElementById('fix-desc').value.trim();
+  const valor = parseFloat(document.getElementById('fix-valor').value);
+  if (!desc || isNaN(valor) || valor <= 0) { document.getElementById('fix-desc').focus(); return; }
+  const pv     = Math.round(valor * 100) / 100;
+  const values = Array(12).fill(pv);
+  setSaving('Salvando…', true);
+  try {
+    await colFixed().add({ desc, defaultValue: pv, values, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    setSaving('Salvo ✓', true);
+    setTimeout(() => setSaving(''), 2000);
+  } catch(e) { setSaving('Erro ao salvar.'); }
+  document.getElementById('fix-desc').value  = '';
+  document.getElementById('fix-valor').value = '';
+  document.getElementById('fix-desc').focus();
+}
+
+async function deleteFixed(id) {
+  if (!confirm('Remover este gasto fixo?')) return;
+  setSaving('Removendo…', true);
+  await colFixed().doc(id).delete();
+  setSaving('Removido ✓', true);
+  setTimeout(() => setSaving(''), 2000);
+}
+
+async function updateFixedCell(id, monthIdx, newVal) {
+  const item = fixedItems.find(f => f.id === id);
+  if (!item) return;
+  const values = [...item.values];
+  values[monthIdx] = Math.round((parseFloat(newVal) || 0) * 100) / 100;
+  setSaving('Salvando…', true);
+  try {
+    await colFixed().doc(id).update({ values });
+    setSaving('Salvo ✓', true);
+    setTimeout(() => setSaving(''), 2000);
+  } catch(e) { setSaving('Erro ao salvar.'); }
+}
+
+function startEditCell(el, id, monthIdx, currentVal) {
+  if (el.querySelector('input')) return;
+  const inp = document.createElement('input');
+  inp.type  = 'number';
+  inp.step  = '0.01';
+  inp.value = currentVal > 0 ? currentVal.toFixed(2) : '';
+  inp.placeholder = '0,00';
+  el.appendChild(inp);
+  inp.focus();
+  inp.select();
+  function commit() {
+    const v = parseFloat(inp.value);
+    if (!isNaN(v) && v !== currentVal) updateFixedCell(id, monthIdx, v);
+    inp.remove();
+  }
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { inp.blur(); }
+    if (e.key === 'Escape') { inp.remove(); }
+    e.stopPropagation();
+  });
+}
+
+function renderFixed() {
+  renderMetricsFixed();
+  renderTableFixed();
+  renderChartFixed();
+}
+
+function renderMetricsFixed() {
+  const totals   = MESES.map((_, i) => fixedItems.reduce((s, f) => s + (f.values[i] || 0), 0));
+  const totalAno = totals.reduce((a, b) => a + b, 0);
+  const mi       = new Date().getMonth();
+  const maiorIdx = totals.indexOf(Math.max(...totals));
+  document.getElementById('metrics-fixos').innerHTML = [
+    ['Total fixo ' + currentYear, fmtRaw(totalAno)],
+    [MESES[mi] + ' — mês atual',  fmtRaw(totals[mi])],
+    ['Contas cadastradas',         fixedItems.length],
+    ['Mês mais pesado',            totals[maiorIdx] > 0 ? MESES[maiorIdx] : '—'],
+  ].map(([label, value]) => `
+    <div class="metric-card">
+      <div class="label">${label}</div>
+      <div class="value">${value}</div>
+    </div>`).join('');
+}
+
+function renderTableFixed() {
+  const t = document.getElementById('fixed-table');
+  const b = 'border-bottom:1px solid var(--border);';
+  const thS = `font-size:11px;font-weight:600;color:var(--text2);padding:7px 8px;${b}`;
+  let html = `<thead><tr>
+    <th style="${thS}text-align:left;">Descrição</th>
+    ${MESES.map(m => `<th style="${thS}text-align:right;">${m}</th>`).join('')}
+    <th style="${b}width:24px;"></th>
+  </tr></thead>`;
+
+  if (fixedItems.length === 0) {
+    html += `<tbody><tr><td colspan="${2+MESES.length}" class="empty-state">Nenhum gasto fixo em ${currentYear}. Adicione o primeiro acima ↑</td></tr></tbody>`;
+  } else {
+    html += '<tbody>' + fixedItems.map(f => `
+      <tr>
+        <td style="${b}font-size:13px;">${f.desc}</td>
+        ${f.values.map((v, i) => `
+          <td class="editable-cell" style="${b}position:relative;" onclick="startEditCell(this,'${f.id}',${i},${v})">
+            ${fmtR(v)}
+          </td>`).join('')}
+        <td style="${b}"><button class="del-btn" onclick="deleteFixed('${f.id}')" title="Remover">&times;</button></td>
+      </tr>`).join('') + '</tbody>';
+  }
+
+  const totals = MESES.map((_, i) => fixedItems.reduce((s, f) => s + (f.values[i] || 0), 0));
+  html += `<tfoot><tr>
+    <td>Total mensal</td>
+    ${totals.map(v => `<td style="text-align:right;color:${v > 0 ? 'var(--text)' : 'var(--text3)'};">${fmtR(v)}</td>`).join('')}
+    <td></td>
+  </tr></tfoot>`;
+  t.innerHTML = html;
+}
+
+function renderChartFixed() {
+  const wrap = document.getElementById('chart-wrap-fixos');
+  if (fixedItems.length === 0) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  if (chartFixInst) { chartFixInst.destroy(); chartFixInst = null; }
+  const totals = MESES.map((_, i) => Math.round(fixedItems.reduce((s, f) => s + (f.values[i] || 0), 0) * 100) / 100);
+  chartFixInst = new Chart(document.getElementById('chart-fixos'), {
+    type: 'line',
+    data: {
+      labels: MESES,
+      datasets: [{
+        label: 'Total fixo',
+        data: totals,
+        borderColor: '#2ea043',
+        backgroundColor: 'rgba(46,160,67,0.1)',
+        borderWidth: 2,
+        pointBackgroundColor: '#2ea043',
+        pointRadius: 4,
+        fill: true,
+        tension: 0.3,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor:'#161b22', borderColor:'#30363d', borderWidth:1,
+          titleColor:'#e6edf3', bodyColor:'#8b949e',
+          callbacks: { label: ctx => `Total: R$\u00a0${ctx.raw.toFixed(2).replace('.', ',')}` }
+        }
+      },
+      scales: {
+        x: { grid:{display:false}, ticks:{font:{size:11},color:'#8b949e'}, border:{color:'#30363d'} },
+        y: { border:{display:false}, grid:{color:'#21262d'},
+          ticks:{font:{size:11},color:'#8b949e', callback: v => 'R$' + v.toLocaleString('pt-BR')} }
+      }
+    }
+  });
+}
+</script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js">
+// ── Gastos Fixos ───────────────────────────────────────────────
+let fixedItems   = [];
+let chartFixInst = null;
+let unsubFixed   = null;
+
+function colFixed() {
+  return db.collection('users').doc(userId).collection('fixos').doc(String(currentYear)).collection('items');
+}
+
+function startListeningFixed() {
+  if (unsubFixed) unsubFixed();
+  unsubFixed = colFixed().orderBy('createdAt', 'asc').onSnapshot(snap => {
+    fixedItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderFixed();
+  });
+}
+
+async function addFixed() {
+  const desc  = document.getElementById('fix-desc').value.trim();
+  const valor = parseFloat(document.getElementById('fix-valor').value);
+  if (!desc || isNaN(valor) || valor <= 0) { document.getElementById('fix-desc').focus(); return; }
+  const pv     = Math.round(valor * 100) / 100;
+  const values = Array(12).fill(pv);
+  setSaving('Salvando…', true);
+  try {
+    await colFixed().add({ desc, defaultValue: pv, values, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    setSaving('Salvo ✓', true);
+    setTimeout(() => setSaving(''), 2000);
+  } catch(e) { setSaving('Erro ao salvar.'); }
+  document.getElementById('fix-desc').value  = '';
+  document.getElementById('fix-valor').value = '';
+  document.getElementById('fix-desc').focus();
+}
+
+async function deleteFixed(id) {
+  if (!confirm('Remover este gasto fixo?')) return;
+  setSaving('Removendo…', true);
+  await colFixed().doc(id).delete();
+  setSaving('Removido ✓', true);
+  setTimeout(() => setSaving(''), 2000);
+}
+
+async function updateFixedCell(id, monthIdx, newVal) {
+  const item = fixedItems.find(f => f.id === id);
+  if (!item) return;
+  const values = [...item.values];
+  values[monthIdx] = Math.round((parseFloat(newVal) || 0) * 100) / 100;
+  setSaving('Salvando…', true);
+  try {
+    await colFixed().doc(id).update({ values });
+    setSaving('Salvo ✓', true);
+    setTimeout(() => setSaving(''), 2000);
+  } catch(e) { setSaving('Erro ao salvar.'); }
+}
+
+function startEditCell(el, id, monthIdx, currentVal) {
+  if (el.querySelector('input')) return;
+  const inp = document.createElement('input');
+  inp.type  = 'number';
+  inp.step  = '0.01';
+  inp.value = currentVal > 0 ? currentVal.toFixed(2) : '';
+  inp.placeholder = '0,00';
+  el.appendChild(inp);
+  inp.focus();
+  inp.select();
+  function commit() {
+    const v = parseFloat(inp.value);
+    if (!isNaN(v) && v !== currentVal) updateFixedCell(id, monthIdx, v);
+    inp.remove();
+  }
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { inp.blur(); }
+    if (e.key === 'Escape') { inp.remove(); }
+    e.stopPropagation();
+  });
+}
+
+function renderFixed() {
+  renderMetricsFixed();
+  renderTableFixed();
+  renderChartFixed();
+}
+
+function renderMetricsFixed() {
+  const totals   = MESES.map((_, i) => fixedItems.reduce((s, f) => s + (f.values[i] || 0), 0));
+  const totalAno = totals.reduce((a, b) => a + b, 0);
+  const mi       = new Date().getMonth();
+  const maiorIdx = totals.indexOf(Math.max(...totals));
+  document.getElementById('metrics-fixos').innerHTML = [
+    ['Total fixo ' + currentYear, fmtRaw(totalAno)],
+    [MESES[mi] + ' — mês atual',  fmtRaw(totals[mi])],
+    ['Contas cadastradas',         fixedItems.length],
+    ['Mês mais pesado',            totals[maiorIdx] > 0 ? MESES[maiorIdx] : '—'],
+  ].map(([label, value]) => `
+    <div class="metric-card">
+      <div class="label">${label}</div>
+      <div class="value">${value}</div>
+    </div>`).join('');
+}
+
+function renderTableFixed() {
+  const t = document.getElementById('fixed-table');
+  const b = 'border-bottom:1px solid var(--border);';
+  const thS = `font-size:11px;font-weight:600;color:var(--text2);padding:7px 8px;${b}`;
+  let html = `<thead><tr>
+    <th style="${thS}text-align:left;">Descrição</th>
+    ${MESES.map(m => `<th style="${thS}text-align:right;">${m}</th>`).join('')}
+    <th style="${b}width:24px;"></th>
+  </tr></thead>`;
+
+  if (fixedItems.length === 0) {
+    html += `<tbody><tr><td colspan="${2+MESES.length}" class="empty-state">Nenhum gasto fixo em ${currentYear}. Adicione o primeiro acima ↑</td></tr></tbody>`;
+  } else {
+    html += '<tbody>' + fixedItems.map(f => `
+      <tr>
+        <td style="${b}font-size:13px;">${f.desc}</td>
+        ${f.values.map((v, i) => `
+          <td class="editable-cell" style="${b}position:relative;" onclick="startEditCell(this,'${f.id}',${i},${v})">
+            ${fmtR(v)}
+          </td>`).join('')}
+        <td style="${b}"><button class="del-btn" onclick="deleteFixed('${f.id}')" title="Remover">&times;</button></td>
+      </tr>`).join('') + '</tbody>';
+  }
+
+  const totals = MESES.map((_, i) => fixedItems.reduce((s, f) => s + (f.values[i] || 0), 0));
+  html += `<tfoot><tr>
+    <td>Total mensal</td>
+    ${totals.map(v => `<td style="text-align:right;color:${v > 0 ? 'var(--text)' : 'var(--text3)'};">${fmtR(v)}</td>`).join('')}
+    <td></td>
+  </tr></tfoot>`;
+  t.innerHTML = html;
+}
+
+function renderChartFixed() {
+  const wrap = document.getElementById('chart-wrap-fixos');
+  if (fixedItems.length === 0) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  if (chartFixInst) { chartFixInst.destroy(); chartFixInst = null; }
+  const totals = MESES.map((_, i) => Math.round(fixedItems.reduce((s, f) => s + (f.values[i] || 0), 0) * 100) / 100);
+  chartFixInst = new Chart(document.getElementById('chart-fixos'), {
+    type: 'line',
+    data: {
+      labels: MESES,
+      datasets: [{
+        label: 'Total fixo',
+        data: totals,
+        borderColor: '#2ea043',
+        backgroundColor: 'rgba(46,160,67,0.1)',
+        borderWidth: 2,
+        pointBackgroundColor: '#2ea043',
+        pointRadius: 4,
+        fill: true,
+        tension: 0.3,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor:'#161b22', borderColor:'#30363d', borderWidth:1,
+          titleColor:'#e6edf3', bodyColor:'#8b949e',
+          callbacks: { label: ctx => `Total: R$\u00a0${ctx.raw.toFixed(2).replace('.', ',')}` }
+        }
+      },
+      scales: {
+        x: { grid:{display:false}, ticks:{font:{size:11},color:'#8b949e'}, border:{color:'#30363d'} },
+        y: { border:{display:false}, grid:{color:'#21262d'},
+          ticks:{font:{size:11},color:'#8b949e', callback: v => 'R$' + v.toLocaleString('pt-BR')} }
+      }
+    }
+  });
+}
+</script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d1117; --bg2: #161b22; --bg3: #21262d;
+    --border: #30363d; --border2: #444c56;
+    --text: #e6edf3; --text2: #8b949e; --text3: #484f58;
+    --green: #238636; --green2: #2ea043;
+    --radius: 10px; --radius-sm: 6px;
+    --font: system-ui, -apple-system, sans-serif;
+    --caixa-bg:#0d2847;  --caixa-pill-bg:#1c3a5e;  --caixa-pill-text:#79b8ff;
+    --inter-bg:#2d1200;  --inter-pill-bg:#4a1c08;  --inter-pill-text:#ffa07a;
+    --itau-bg:#2b1d00;   --itau-pill-bg:#4a3000;   --itau-pill-text:#ffd700;
+    --cl-bg:#1a1040;     --cl-pill-bg:#2e1f5e;     --cl-pill-text:#c4b5fd;
+    --afinz-bg:#052018;  --afinz-pill-bg:#083828;  --afinz-pill-text:#6ee7b7;
+  }
+
+  body { background:var(--bg); color:var(--text); font-family:var(--font); font-size:14px; line-height:1.6; min-height:100vh; }
+
+  #login-screen { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; gap:1.5rem; padding:2rem; }
+  #login-screen h1 { font-size:26px; font-weight:700; letter-spacing:-0.5px; }
+  #login-screen p  { color:var(--text2); font-size:14px; text-align:center; max-width:320px; }
+  .btn-google { display:flex; align-items:center; gap:10px; background:var(--bg2); border:1px solid var(--border2); border-radius:var(--radius-sm); color:var(--text); font-size:14px; font-weight:500; padding:10px 20px; cursor:pointer; transition:background 0.15s; }
+  .btn-google:hover { background:var(--bg3); }
+
+  #app-screen { display:none; }
+
+  header { background:var(--bg2); border-bottom:1px solid var(--border); padding:0.875rem 2rem; display:flex; align-items:center; gap:12px; }
+  header h1 { font-size:15px; font-weight:700; }
+  .year-selector { display:flex; align-items:center; gap:6px; margin-left:4px; }
+  .year-btn { background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text2); font-size:15px; padding:2px 8px; cursor:pointer; transition:all 0.15s; line-height:1.4; }
+  .year-btn:hover { border-color:var(--border2); color:var(--text); }
+  .year-display { font-size:15px; font-weight:700; color:var(--green2); min-width:48px; text-align:center; }
+  .spacer { flex:1; }
+  .user-info { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text2); }
+  .user-info img { width:24px; height:24px; border-radius:50%; border:1px solid var(--border); }
+  .btn-logout { background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text2); font-size:11px; padding:3px 8px; cursor:pointer; }
+  .btn-logout:hover { border-color:var(--border2); color:var(--text); }
+
+  main { max-width:1200px; margin:0 auto; padding:2rem; }
+
+  .tabs { display:flex; gap:4px; margin-bottom:1.5rem; border-bottom:1px solid var(--border); }
+  .tab { background:none; border:none; color:var(--text2); font-size:13px; font-weight:500; padding:8px 16px; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; transition:all 0.15s; }
+  .tab:hover { color:var(--text); }
+  .tab.active { color:var(--text); border-bottom-color:var(--green2); }
+  .tab-content { display:none; }
+  .tab-content.active { display:block; }
+
+  .metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:1.5rem; }
+  .metric-card { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); padding:1rem 1.25rem; }
+  .metric-card .label { font-size:12px; color:var(--text2); margin-bottom:6px; }
+  .metric-card .value { font-size:22px; font-weight:700; letter-spacing:-0.5px; }
+
+  .panel { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); padding:1.25rem; margin-bottom:1.25rem; }
+  .panel-title { font-size:12px; font-weight:600; color:var(--text2); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:1rem; }
+
+  .form-grid { display:grid; grid-template-columns:2.5fr 1fr 1fr 1fr 1fr auto; gap:10px; align-items:end; }
+  .form-group label { display:block; font-size:11px; color:var(--text2); margin-bottom:4px; }
+  input, select { width:100%; background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:13px; padding:7px 10px; outline:none; transition:border-color 0.15s; }
+  input:focus, select:focus { border-color:var(--border2); }
+  input::placeholder { color:var(--text3); }
+  select option { background:var(--bg3); }
+  button.primary { background:var(--green); border:1px solid var(--green2); border-radius:var(--radius-sm); color:#fff; font-size:13px; font-weight:600; padding:8px 16px; cursor:pointer; white-space:nowrap; transition:background 0.15s; height:36px; }
+  button.primary:hover { background:var(--green2); }
+
+  .table-wrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:12px; min-width:900px; }
+  thead th { font-size:11px; font-weight:600; color:var(--text2); text-transform:uppercase; letter-spacing:0.3px; padding:7px 8px; text-align:right; border-bottom:1px solid var(--border); white-space:nowrap; }
+  thead th:first-child, thead th:nth-child(2) { text-align:left; }
+  td { padding:6px 8px; border-bottom:1px solid var(--border); text-align:right; vertical-align:middle; }
+  td:first-child { text-align:left; }
+  td:nth-child(2) { text-align:center; }
+  tfoot td { padding:8px 8px; border-top:2px solid var(--border2); font-size:12px; font-weight:600; color:var(--text2); text-align:right; }
+  tfoot td:first-child { text-align:left; }
+
+  .pill { font-size:11px; font-weight:600; padding:2px 10px; border-radius:20px; display:inline-block; white-space:nowrap; }
+  .badge-n { font-size:10px; color:var(--text2); background:var(--bg3); border:1px solid var(--border); padding:1px 5px; border-radius:4px; margin-left:4px; }
+  .del-btn { background:none; border:none; color:var(--text3); cursor:pointer; font-size:16px; padding:0 2px; line-height:1; transition:color 0.1s; }
+  .del-btn:hover { color:#f85149; }
+  .val-empty { color:var(--text3); opacity:0.4; }
+
+  .row-Caixa td { background:var(--caixa-bg); }
+  .row-Inter td { background:var(--inter-bg); }
+  .row-Itaú  td { background:var(--itau-bg);  }
+  .row-CL    td { background:var(--cl-bg);    }
+  .row-Afinz td { background:var(--afinz-bg); }
+  .pill-Caixa { background:var(--caixa-pill-bg); color:var(--caixa-pill-text); }
+  .pill-Inter { background:var(--inter-pill-bg); color:var(--inter-pill-text); }
+  .pill-Itaú  { background:var(--itau-pill-bg);  color:var(--itau-pill-text);  }
+  .pill-CL    { background:var(--cl-pill-bg);    color:var(--cl-pill-text);    }
+  .pill-Afinz { background:var(--afinz-pill-bg); color:var(--afinz-pill-text); }
+
+  .chart-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .chart-title  { font-size:12px; font-weight:600; color:var(--text2); text-transform:uppercase; letter-spacing:0.5px; }
+  .legend { display:flex; flex-wrap:wrap; gap:14px; }
+  .legend-item { display:flex; align-items:center; gap:5px; font-size:12px; color:var(--text2); }
+  .legend-dot  { width:10px; height:10px; border-radius:2px; display:inline-block; }
+  .chart-canvas-wrap { position:relative; width:100%; height:220px; }
+
+  .empty-state { text-align:center; color:var(--text3); padding:2.5rem; font-size:13px; }
+  .saving-indicator { font-size:11px; color:var(--text3); padding:4px 2rem; text-align:right; min-height:20px; }
+  .saving-indicator.active { color:var(--green2); }
+
+  .coming-soon { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:3rem; gap:1rem; }
+  .coming-soon .cs-title { font-size:15px; font-weight:600; color:var(--text2); }
+  .coming-soon p { font-size:13px; color:var(--text3); text-align:center; max-width:300px; }
+
+  @media (max-width:700px) {
+    main { padding:1rem; }
+    header { padding:0.75rem 1rem; flex-wrap:wrap; }
+    .form-grid { grid-template-columns:1fr 1fr; }
+    .form-grid > *:first-child { grid-column:1 / -1; }
+    .form-grid > button { grid-column:1 / -1; width:100%; height:40px; }
+  }
+
+  .editable-cell { cursor:pointer; position:relative; }
+  .editable-cell:hover { background:rgba(255,255,255,0.05) !important; }
+  .editable-cell input { position:absolute; inset:0; width:100%; height:100%; background:var(--bg3); border:1px solid var(--green2); border-radius:4px; color:var(--text); font-size:12px; text-align:right; padding:0 8px; outline:none; z-index:10; }
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#2ea043" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+  </svg>
+  <h1>Parcelinhas</h1>
+  <p>Entre com sua conta Google para acessar seus gastos em qualquer dispositivo.</p>
+  <button class="btn-google" onclick="signIn()">
+    <svg width="18" height="18" viewBox="0 0 48 48">
+      <path fill="#FFC107" d="M43.6 20H24v8h11.3C33.7 33.6 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.7 1.1 7.8 2.9l5.7-5.7C33.9 6.5 29.2 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20c11 0 19.7-8 19.7-20 0-1.3-.1-2.7-.1-4z"/>
+      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16 19 13 24 13c3 0 5.7 1.1 7.8 2.9l5.7-5.7C33.9 6.5 29.2 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
+      <path fill="#4CAF50" d="M24 44c5.2 0 9.9-1.9 13.5-5l-6.2-5.2C29.4 35.6 26.8 36.5 24 36.5c-5.2 0-9.6-3.4-11.2-8.1l-6.5 5C9.5 39.7 16.3 44 24 44z"/>
+      <path fill="#1976D2" d="M43.6 20H24v8h11.3c-.8 2.3-2.3 4.2-4.2 5.6l6.2 5.2C40.8 35.4 44 30.1 44 24c0-1.3-.1-2.7-.4-4z"/>
+    </svg>
+    Entrar com Google
+  </button>
+</div>
+
+<div id="app-screen">
+  <header>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2ea043" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+    </svg>
+    <h1>Parcelinhas</h1>
+    <div class="year-selector">
+      <button class="year-btn" onclick="changeYear(-1)">&#8249;</button>
+      <span class="year-display" id="year-display">2026</span>
+      <button class="year-btn" onclick="changeYear(1)">&#8250;</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="user-info">
+      <img id="user-photo" src="" alt="" />
+      <span id="user-name"></span>
+      <button class="btn-logout" onclick="signOut()">Sair</button>
+    </div>
+  </header>
+
+  <div class="saving-indicator" id="saving-indicator"></div>
+
+  <main>
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('parcelas', this)">Parcelas</button>
+      <button class="tab" onclick="switchTab('fixos', this)">Gastos fixos</button>
+    </div>
+
+    <div id="tab-parcelas" class="tab-content active">
+      <div class="metrics" id="metrics"></div>
+
+      <div class="panel">
+        <div class="panel-title">Nova parcela</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Descrição</label>
+            <input type="text" id="inp-desc" placeholder="Ex: iPhone 16, Geladeira…" />
+          </div>
+          <div class="form-group">
+            <label>Valor por parcela (R$)</label>
+            <input type="number" id="inp-valor" placeholder="0,00" step="0.01" min="0" />
+          </div>
+          <div class="form-group">
+            <label>Cartão</label>
+            <select id="inp-cartao">
+              <option>Caixa</option><option>Inter</option><option>Itaú</option><option>CL</option><option>Afinz</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Parcelas</label>
+            <input type="number" id="inp-parcelas" value="1" min="1" max="12" step="1" />
+          </div>
+          <div class="form-group">
+            <label>Mês início</label>
+            <select id="inp-inicio">
+              <option value="0">Jan</option><option value="1">Fev</option><option value="2">Mar</option>
+              <option value="3">Abr</option><option value="4">Mai</option><option value="5">Jun</option>
+              <option value="6">Jul</option><option value="7">Ago</option><option value="8">Set</option>
+              <option value="9">Out</option><option value="10">Nov</option><option value="11">Dez</option>
+            </select>
+          </div>
+          <button class="primary" onclick="addExpense()">+ Adicionar</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="table-wrap">
+          <table id="main-table"></table>
+        </div>
+      </div>
+
+      <div class="panel" id="chart-wrap" style="display:none;">
+        <div class="chart-header">
+          <span class="chart-title">Total por mês</span>
+          <div class="legend" id="legend"></div>
+        </div>
+        <div class="chart-canvas-wrap">
+          <canvas id="chart" role="img" aria-label="Gráfico de barras empilhadas com gastos mensais por cartão"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-fixos" class="tab-content">
+      <div class="metrics" id="metrics-fixos"></div>
+
+      <div class="panel">
+        <div class="panel-title">Novo gasto fixo</div>
+        <div class="form-grid" style="grid-template-columns:3fr 1fr auto;">
+          <div class="form-group">
+            <label>Descrição</label>
+            <input type="text" id="fix-desc" placeholder="Ex: Internet, Luz, Academia…" />
+          </div>
+          <div class="form-group">
+            <label>Valor padrão (R$)</label>
+            <input type="number" id="fix-valor" placeholder="0,00" step="0.01" min="0" />
+          </div>
+          <button class="primary" onclick="addFixed()">+ Adicionar</button>
+        </div>
+        <p style="font-size:11px;color:var(--text3);margin-top:10px;">Clique em qualquer valor na tabela para editar o mês individualmente.</p>
+      </div>
+
+      <div class="panel">
+        <div class="table-wrap">
+          <table id="fixed-table"></table>
+        </div>
+      </div>
+
+      <div class="panel" id="chart-wrap-fixos" style="display:none;">
+        <div class="chart-header">
+          <span class="chart-title">Total fixo por mês</span>
+        </div>
+        <div class="chart-canvas-wrap">
+          <canvas id="chart-fixos" role="img" aria-label="Gráfico de linha com total de gastos fixos mensais"></canvas>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+const firebaseConfig = {
+  apiKey:            "AIzaSyBfN00QYYTgiaOFwTquGkL4TUZVbAAtATA",
+  authDomain:        "gastos-e0ef8.firebaseapp.com",
+  projectId:         "gastos-e0ef8",
+  storageBucket:     "gastos-e0ef8.firebasestorage.app",
+  messagingSenderId: "189241437851",
+  appId:             "1:189241437851:web:18705288ec04bc504c603e"
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db   = firebase.firestore();
+
+const MESES   = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const CARTOES = ['Caixa','Inter','Itaú','CL','Afinz'];
+const CHART_COLORS = { 'Caixa':'#1f6feb','Inter':'#e06030','Itaú':'#d4a017','CL':'#8b5cf6','Afinz':'#10b981' };
+
+let expenses    = [];
+let chartInst   = null;
+let userId      = null;
+let unsub       = null;
+let currentYear = 2026;
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+
+function changeYear(delta) {
+  currentYear += delta;
+  document.getElementById('year-display').textContent = currentYear;
+  if (unsub) unsub();
+  if (unsubFixed) unsubFixed();
+  startListening();
+}
+
+function signIn() { auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); }
+function signOut() { if (unsub) unsub(); auth.signOut(); }
+
+auth.onAuthStateChanged(user => {
+  if (user) {
+    userId = user.uid;
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app-screen').style.display   = 'block';
+    document.getElementById('user-name').textContent      = user.displayName;
+    document.getElementById('user-photo').src             = user.photoURL;
+    startListening();
+  } else {
+    userId = null; expenses = [];
+    document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('app-screen').style.display   = 'none';
+  }
+});
+
+function col() {
+  return db.collection('users').doc(userId).collection('parcelas').doc(String(currentYear)).collection('items');
+}
+
+function startListening() {
+  unsub = col().orderBy('createdAt', 'asc').onSnapshot(snap => {
+    expenses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    render();
+  });
+  startListeningFixed();
+}
+
+function setSaving(msg, active = false) {
+  const el = document.getElementById('saving-indicator');
+  el.textContent = msg;
+  el.className = 'saving-indicator' + (active ? ' active' : '');
+}
+
+async function addExpense() {
+  const desc     = document.getElementById('inp-desc').value.trim();
+  const valor    = parseFloat(document.getElementById('inp-valor').value);
+  const cartao   = document.getElementById('inp-cartao').value;
+  const parcelas = Math.min(12, Math.max(1, parseInt(document.getElementById('inp-parcelas').value) || 1));
+  const inicio   = parseInt(document.getElementById('inp-inicio').value);
+  if (!desc || isNaN(valor) || valor <= 0) { document.getElementById('inp-desc').focus(); return; }
+  const pv = Math.round(valor * 100) / 100;
+  const values = Array(12).fill(0);
+  for (let i = 0; i < parcelas && (inicio + i) < 12; i++) values[inicio + i] = pv;
+  setSaving('Salvando…', true);
+  try {
+    await col().add({ desc, cartao, parcelas, inicio, values, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    setSaving('Salvo ✓', true);
+    setTimeout(() => setSaving(''), 2000);
+  } catch(e) { setSaving('Erro ao salvar.'); }
+  document.getElementById('inp-desc').value = '';
+  document.getElementById('inp-valor').value = '';
+  document.getElementById('inp-parcelas').value = '1';
+  document.getElementById('inp-desc').focus();
+}
+
+async function deleteExpense(id) {
+  if (!confirm('Remover este gasto?')) return;
+  setSaving('Removendo…', true);
+  await col().doc(id).delete();
+  setSaving('Removido ✓', true);
+  setTimeout(() => setSaving(''), 2000);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !['BUTTON','SELECT'].includes(document.activeElement.tagName)) addExpense();
+});
+
+function render() { renderMetrics(); renderTable(); renderChart(); }
+function fmtR(v)   { return v > 0 ? 'R$&nbsp;' + v.toFixed(2).replace('.', ',') : '<span class="val-empty">—</span>'; }
+function fmtRaw(v) { return 'R$\u00a0' + v.toFixed(2).replace('.', ','); }
+
+function renderMetrics() {
+  const totals   = MESES.map((_, i) => expenses.reduce((s, e) => s + (e.values[i] || 0), 0));
+  const totalAno = totals.reduce((a, b) => a + b, 0);
+  const mi       = new Date().getMonth();
+  const maiorIdx = totals.indexOf(Math.max(...totals));
+  document.getElementById('metrics').innerHTML = [
+    ['Total ' + currentYear,     fmtRaw(totalAno)],
+    [MESES[mi] + ' — atual',     fmtRaw(totals[mi])],
+    ['Compras parceladas',        expenses.filter(e => e.parcelas > 1).length],
+    ['Mês mais pesado',           totals[maiorIdx] > 0 ? MESES[maiorIdx] : '—'],
+  ].map(([label, value]) => `
+    <div class="metric-card">
+      <div class="label">${label}</div>
+      <div class="value">${value}</div>
+    </div>`).join('');
+}
+
+function renderTable() {
+  const t = document.getElementById('main-table');
+  const b = 'border-bottom:1px solid var(--border);';
+  const thS = `font-size:11px;font-weight:600;color:var(--text2);padding:7px 8px;${b}`;
+  let html = `<thead><tr>
+    <th style="${thS}text-align:left;">Descrição</th>
+    <th style="${thS}text-align:center;">Cartão</th>
+    ${MESES.map(m => `<th style="${thS}text-align:right;">${m}</th>`).join('')}
+    <th style="${b}width:24px;"></th>
+  </tr></thead>`;
+  if (expenses.length === 0) {
+    html += `<tbody><tr><td colspan="${3+MESES.length}" class="empty-state">Nenhuma parcela em ${currentYear}. Adicione a primeira acima ↑</td></tr></tbody>`;
+  } else {
+    html += '<tbody>' + expenses.map(e => `
+      <tr class="row-${e.cartao}">
+        <td>${e.desc}${e.parcelas > 1 ? `<span class="badge-n">${e.parcelas}x</span>` : ''}</td>
+        <td><span class="pill pill-${e.cartao}">${e.cartao}</span></td>
+        ${e.values.map(v => `<td>${fmtR(v)}</td>`).join('')}
+        <td><button class="del-btn" onclick="deleteExpense('${e.id}')" title="Remover">&times;</button></td>
+      </tr>`).join('') + '</tbody>';
+  }
+  const totals = MESES.map((_, i) => expenses.reduce((s, e) => s + (e.values[i] || 0), 0));
+  html += `<tfoot><tr>
+    <td colspan="2">Total mensal</td>
+    ${totals.map(v => `<td style="color:${v > 0 ? 'var(--text)' : 'var(--text3)'};">${fmtR(v)}</td>`).join('')}
+    <td></td>
+  </tr></tfoot>`;
+  t.innerHTML = html;
+}
+
+function renderChart() {
+  const wrap = document.getElementById('chart-wrap');
+  if (expenses.length === 0) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  const active = CARTOES.filter(c => expenses.some(e => e.cartao === c));
+  document.getElementById('legend').innerHTML = active.map(c =>
+    `<span class="legend-item"><span class="legend-dot" style="background:${CHART_COLORS[c]}"></span>${c}</span>`
+  ).join('');
+  if (chartInst) { chartInst.destroy(); chartInst = null; }
+  const datasets = CARTOES.map(cartao => ({
+    label: cartao,
+    data: MESES.map((_, i) => Math.round(expenses.filter(e => e.cartao === cartao).reduce((s, e) => s + (e.values[i] || 0), 0) * 100) / 100),
+    backgroundColor: CHART_COLORS[cartao],
+    borderRadius: 4, borderSkipped: false,
+  })).filter(ds => ds.data.some(v => v > 0));
+  chartInst = new Chart(document.getElementById('chart'), {
+    type: 'bar',
+    data: { labels: MESES, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor:'#161b22', borderColor:'#30363d', borderWidth:1,
+          titleColor:'#e6edf3', bodyColor:'#8b949e',
+          callbacks: { label: ctx => `${ctx.dataset.label}: R$\u00a0${ctx.raw.toFixed(2).replace('.', ',')}` }
+        }
+      },
+      scales: {
+        x: { stacked:true, grid:{display:false}, ticks:{font:{size:11},color:'#8b949e'}, border:{color:'#30363d'} },
+        y: { stacked:true, border:{display:false}, grid:{color:'#21262d'},
+          ticks:{font:{size:11},color:'#8b949e', callback: v => 'R$' + v.toLocaleString('pt-BR')} }
+      }
+    }
+  });
+}
+
+// ── Gastos Fixos ───────────────────────────────────────────────
+let fixedItems   = [];
+let chartFixInst = null;
+let unsubFixed   = null;
+
+function colFixed() {
+  return db.collection('users').doc(userId).collection('fixos').doc(String(currentYear)).collection('items');
+}
+
+function startListeningFixed() {
+  if (unsubFixed) unsubFixed();
+  unsubFixed = colFixed().orderBy('createdAt', 'asc').onSnapshot(snap => {
+    fixedItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderFixed();
+  });
+}
+
+async function addFixed() {
+  const desc  = document.getElementById('fix-desc').value.trim();
+  const valor = parseFloat(document.getElementById('fix-valor').value);
+  if (!desc || isNaN(valor) || valor <= 0) { document.getElementById('fix-desc').focus(); return; }
+  const pv     = Math.round(valor * 100) / 100;
+  const values = Array(12).fill(pv);
+  setSaving('Salvando…', true);
+  try {
+    await colFixed().add({ desc, defaultValue: pv, values, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    setSaving('Salvo ✓', true);
+    setTimeout(() => setSaving(''), 2000);
+  } catch(e) { setSaving('Erro ao salvar.'); }
+  document.getElementById('fix-desc').value  = '';
+  document.getElementById('fix-valor').value = '';
+  document.getElementById('fix-desc').focus();
+}
+
+async function deleteFixed(id) {
+  if (!confirm('Remover este gasto fixo?')) return;
+  setSaving('Removendo…', true);
+  await colFixed().doc(id).delete();
+  setSaving('Removido ✓', true);
+  setTimeout(() => setSaving(''), 2000);
+}
+
+async function updateFixedCell(id, monthIdx, newVal) {
+  const item = fixedItems.find(f => f.id === id);
+  if (!item) return;
+  const values = [...item.values];
+  values[monthIdx] = Math.round((parseFloat(newVal) || 0) * 100) / 100;
+  setSaving('Salvando…', true);
+  try {
+    await colFixed().doc(id).update({ values });
+    setSaving('Salvo ✓', true);
+    setTimeout(() => setSaving(''), 2000);
+  } catch(e) { setSaving('Erro ao salvar.'); }
+}
+
+function startEditCell(el, id, monthIdx, currentVal) {
+  if (el.querySelector('input')) return;
+  const inp = document.createElement('input');
+  inp.type  = 'number';
+  inp.step  = '0.01';
+  inp.value = currentVal > 0 ? currentVal.toFixed(2) : '';
+  inp.placeholder = '0,00';
+  el.appendChild(inp);
+  inp.focus();
+  inp.select();
+  function commit() {
+    const v = parseFloat(inp.value);
+    if (!isNaN(v) && v !== currentVal) updateFixedCell(id, monthIdx, v);
+    inp.remove();
+  }
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { inp.blur(); }
+    if (e.key === 'Escape') { inp.remove(); }
+    e.stopPropagation();
+  });
+}
+
+function renderFixed() {
+  renderMetricsFixed();
+  renderTableFixed();
+  renderChartFixed();
+}
+
+function renderMetricsFixed() {
+  const totals   = MESES.map((_, i) => fixedItems.reduce((s, f) => s + (f.values[i] || 0), 0));
+  const totalAno = totals.reduce((a, b) => a + b, 0);
+  const mi       = new Date().getMonth();
+  const maiorIdx = totals.indexOf(Math.max(...totals));
+  document.getElementById('metrics-fixos').innerHTML = [
+    ['Total fixo ' + currentYear, fmtRaw(totalAno)],
+    [MESES[mi] + ' — mês atual',  fmtRaw(totals[mi])],
+    ['Contas cadastradas',         fixedItems.length],
+    ['Mês mais pesado',            totals[maiorIdx] > 0 ? MESES[maiorIdx] : '—'],
+  ].map(([label, value]) => `
+    <div class="metric-card">
+      <div class="label">${label}</div>
+      <div class="value">${value}</div>
+    </div>`).join('');
+}
+
+function renderTableFixed() {
+  const t = document.getElementById('fixed-table');
+  const b = 'border-bottom:1px solid var(--border);';
+  const thS = `font-size:11px;font-weight:600;color:var(--text2);padding:7px 8px;${b}`;
+  let html = `<thead><tr>
+    <th style="${thS}text-align:left;">Descrição</th>
+    ${MESES.map(m => `<th style="${thS}text-align:right;">${m}</th>`).join('')}
+    <th style="${b}width:24px;"></th>
+  </tr></thead>`;
+
+  if (fixedItems.length === 0) {
+    html += `<tbody><tr><td colspan="${2+MESES.length}" class="empty-state">Nenhum gasto fixo em ${currentYear}. Adicione o primeiro acima ↑</td></tr></tbody>`;
+  } else {
+    html += '<tbody>' + fixedItems.map(f => `
+      <tr>
+        <td style="${b}font-size:13px;">${f.desc}</td>
+        ${f.values.map((v, i) => `
+          <td class="editable-cell" style="${b}position:relative;" onclick="startEditCell(this,'${f.id}',${i},${v})">
+            ${fmtR(v)}
+          </td>`).join('')}
+        <td style="${b}"><button class="del-btn" onclick="deleteFixed('${f.id}')" title="Remover">&times;</button></td>
+      </tr>`).join('') + '</tbody>';
+  }
+
+  const totals = MESES.map((_, i) => fixedItems.reduce((s, f) => s + (f.values[i] || 0), 0));
+  html += `<tfoot><tr>
+    <td>Total mensal</td>
+    ${totals.map(v => `<td style="text-align:right;color:${v > 0 ? 'var(--text)' : 'var(--text3)'};">${fmtR(v)}</td>`).join('')}
+    <td></td>
+  </tr></tfoot>`;
+  t.innerHTML = html;
+}
+
+function renderChartFixed() {
+  const wrap = document.getElementById('chart-wrap-fixos');
+  if (fixedItems.length === 0) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  if (chartFixInst) { chartFixInst.destroy(); chartFixInst = null; }
+  const totals = MESES.map((_, i) => Math.round(fixedItems.reduce((s, f) => s + (f.values[i] || 0), 0) * 100) / 100);
+  chartFixInst = new Chart(document.getElementById('chart-fixos'), {
+    type: 'line',
+    data: {
+      labels: MESES,
+      datasets: [{
+        label: 'Total fixo',
+        data: totals,
+        borderColor: '#2ea043',
+        backgroundColor: 'rgba(46,160,67,0.1)',
+        borderWidth: 2,
+        pointBackgroundColor: '#2ea043',
+        pointRadius: 4,
+        fill: true,
+        tension: 0.3,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor:'#161b22', borderColor:'#30363d', borderWidth:1,
+          titleColor:'#e6edf3', bodyColor:'#8b949e',
+          callbacks: { label: ctx => `Total: R$\u00a0${ctx.raw.toFixed(2).replace('.', ',')}` }
+        }
+      },
+      scales: {
+        x: { grid:{display:false}, ticks:{font:{size:11},color:'#8b949e'}, border:{color:'#30363d'} },
+        y: { border:{display:false}, grid:{color:'#21262d'},
+          ticks:{font:{size:11},color:'#8b949e', callback: v => 'R$' + v.toLocaleString('pt-BR')} }
+      }
+    }
+  });
+}
+</script>
+</body>
+</html>
