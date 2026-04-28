@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Parcelinhas</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#0d1117;--bg2:#161b22;--bg3:#21262d;
+  --border:#30363d;--border2:#444c56;
+  --text:#e6edf3;--text2:#8b949e;--text3:#484f58;
+  --green:#238636;--green2:#2ea043;
+  --neon:#39d353;--neon-bg:#061a0e;--neon-dim:#2ea043;
+  --radius:10px;--radius-sm:6px;
+  --font:system-ui,-apple-system,sans-serif;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.6;min-height:100vh;}
+/* Login */
+#login-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:1.5rem;padding:2rem;}
+#login-screen h1{font-size:26px;font-weight:700;letter-spacing:-0.5px;}
+#login-screen p{color:var(--text2);font-size:14px;text-align:center;max-width:320px;}
+.btn-google{display:flex;align-items:center;gap:10px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:14px;font-weight:500;padding:10px 20px;cursor:pointer;transition:background .15s;}
+.btn-google:hover{background:var(--bg3);}
+/* App */
+#app-screen{display:none;}
+header{background:var(--bg2);border-bottom:1px solid var(--border);padding:.875rem 2rem;display:flex;align-items:center;gap:12px;}
+header h1{font-size:15px;font-weight:700;}
+.year-sel{display:flex;align-items:center;gap:6px;margin-left:4px;}
+.yr-btn{background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text2);font-size:15px;padding:2px 8px;cursor:pointer;transition:all .15s;line-height:1.4;}
+.yr-btn:hover{border-color:var(--border2);color:var(--text);}
+.yr-val{font-size:15px;font-weight:700;color:var(--green2);min-width:48px;text-align:center;}
+.spacer{flex:1;}
+.user-info{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);}
+.user-info img{width:24px;height:24px;border-radius:50%;border:1px solid var(--border);}
+.btn-sm{background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text2);font-size:11px;padding:3px 8px;cursor:pointer;}
+.btn-sm:hover{border-color:var(--border2);color:var(--text);}
+main{max-width:1200px;margin:0 auto;padding:2rem;}
+/* Tabs */
+.tabs{display:flex;gap:4px;margin-bottom:1.5rem;border-bottom:1px solid var(--border);}
+.tab{background:none;border:none;color:var(--text2);font-size:13px;font-weight:500;padding:8px 16px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s;}
+.tab:hover{color:var(--text);}
+.tab.active{color:var(--text);border-bottom-color:var(--green2);}
+.tab-content{display:none;}
+.tab-content.active{display:block;}
+/* Metrics */
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:1.5rem;}
+.mc{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.25rem;}
+.mc .lb{font-size:12px;color:var(--text2);margin-bottom:6px;}
+.mc .vl{font-size:22px;font-weight:700;letter-spacing:-.5px;}
+/* Hero card */
+.hero{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:1.5rem;margin-bottom:1.25rem;}
+.hero-month{font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:.75rem;}
+.hero-total{font-size:36px;font-weight:700;letter-spacing:-1px;color:var(--text);margin-bottom:1rem;}
+.hero-row{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border);}
+.hero-row:first-of-type{border-top:none;}
+.hero-label{font-size:13px;color:var(--text2);}
+.hero-val{font-size:13px;font-weight:600;color:var(--text);}
+/* Progress */
+.prog-card{grid-column:1/-1;}
+.prog-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+.prog-count{font-size:13px;font-weight:600;color:var(--neon);}
+.prog-bar{height:5px;background:var(--bg3);border-radius:3px;overflow:hidden;}
+.prog-fill{height:100%;background:var(--neon);border-radius:3px;transition:width .4s ease;}
+.prog-pct{font-size:11px;color:var(--text2);margin-top:3px;text-align:right;}
+/* Panel */
+.panel{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;margin-bottom:1.25rem;}
+.panel-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;}
+.panel-title{font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;}
+.panel-hint{font-size:11px;color:var(--text3);margin-top:8px;}
+/* Form */
+.fg{display:grid;gap:10px;align-items:end;}
+.fg-p{grid-template-columns:2.5fr 1fr 1fr 1fr 1fr auto;}
+.fg-f{grid-template-columns:3fr 1fr auto;}
+.fg-c{grid-template-columns:2fr 1fr auto;}
+.fl label{display:block;font-size:11px;color:var(--text2);margin-bottom:4px;}
+.total-hint{font-size:11px;color:var(--neon);margin-top:8px;min-height:16px;}
+input,select{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;padding:7px 10px;outline:none;transition:border-color .15s;}
+input:focus,select:focus{border-color:var(--border2);}
+input::placeholder{color:var(--text3);}
+select option{background:var(--bg3);}
+.btn-primary{background:var(--green);border:1px solid var(--green2);border-radius:var(--radius-sm);color:#fff;font-size:13px;font-weight:600;padding:8px 16px;cursor:pointer;white-space:nowrap;transition:background .15s;height:36px;}
+.btn-primary:hover{background:var(--green2);}
+.btn-export{background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text2);font-size:12px;padding:6px 12px;cursor:pointer;transition:all .15s;}
+.btn-export:hover{border-color:var(--border2);color:var(--text);}
+.btn-arch{background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text3);font-size:11px;padding:2px 7px;cursor:pointer;}
+.btn-arch:hover{border-color:var(--neon-dim);color:var(--neon);}
+.archived-toggle{font-size:12px;color:var(--text2);cursor:pointer;text-decoration:underline;text-underline-offset:2px;}
+/* Table */
+.tbl-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:12px;min-width:900px;}
+thead th{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.3px;padding:7px 8px;text-align:right;border-bottom:1px solid var(--border);white-space:nowrap;}
+thead th.thl{text-align:left;}
+thead th.thc{text-align:center;}
+td{padding:6px 8px;border-bottom:1px solid var(--border);text-align:right;vertical-align:middle;font-variant-numeric:tabular-nums;}
+td.tdl{text-align:left;}
+td.tdc{text-align:center;}
+tfoot td{padding:8px 8px;border-top:2px solid var(--border2);font-size:12px;font-weight:600;color:var(--text2);text-align:right;}
+tfoot td.tdl{text-align:left;}
+/* Pills */
+.pill{font-size:11px;font-weight:600;padding:2px 10px;border-radius:20px;display:inline-block;white-space:nowrap;}
+.badge{font-size:10px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);padding:1px 5px;border-radius:4px;margin-left:4px;}
+.del-btn{background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:0 2px;line-height:1;transition:color .1s;}
+.del-btn:hover{color:#f85149;}
+.edit-btn{background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px;padding:0 3px;line-height:1;transition:color .1s;}
+.edit-btn:hover{color:var(--text2);}
+/* Paid cells */
+td.paid{background:var(--neon-bg)!important;cursor:pointer;}
+td.paid .cv{color:var(--neon);font-weight:600;}
+td.paid .cl{display:block;font-size:9px;color:var(--neon-dim);letter-spacing:.3px;margin-top:1px;}
+td.unpaid{cursor:pointer;}
+td.unpaid:hover{opacity:.8;}
+.cl{display:none;}
+/* Inline edit */
+td.cell-edit{position:relative;}
+td.cell-edit input.ie{position:absolute;inset:0;width:100%;height:100%;background:var(--bg3);border:1px solid var(--green2);border-radius:4px;color:var(--text);font-size:12px;text-align:right;padding:0 8px;outline:none;z-index:10;}
+/* Empty */
+.empty{text-align:center;color:var(--text3);padding:2.5rem;font-size:13px;}
+.val-empty{color:var(--text3);opacity:.3;}
+/* Saving indicator */
+.saving{font-size:11px;color:var(--text3);padding:4px 2rem;text-align:right;min-height:20px;}
+.saving.on{color:var(--green2);}
+.saving.err{color:#f85149;}
+/* Chart */
+.chart-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.chart-title{font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;}
+.legend{display:flex;flex-wrap:wrap;gap:14px;}
+.leg-item{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2);}
+.leg-dot{width:10px;height:10px;border-radius:2px;display:inline-block;}
+.chart-wrap{position:relative;width:100%;height:220px;}
+/* Card management */
+.card-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:1.25rem;}
+.card-item{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.75rem 1rem;display:flex;align-items:center;gap:10px;}
+.card-swatch{width:14px;height:14px;border-radius:3px;flex-shrink:0;}
+.card-name{flex:1;font-size:13px;}
+/* Fatura section */
+.fatura-section{margin-top:1.5rem;}
+.fatura-section h3{font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:1rem;}
+.fatura-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;}
+.fatura-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:1rem;}
+.fatura-card-hdr{display:flex;align-items:center;gap:8px;margin-bottom:.75rem;}
+.fatura-card-name{font-size:13px;font-weight:600;}
+.fatura-card-total{margin-left:auto;font-size:13px;font-weight:700;color:var(--neon);}
+.fatura-months{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;}
+.fm{text-align:center;padding:4px 2px;}
+.fm-label{font-size:9px;color:var(--text2);text-transform:uppercase;}
+.fm-val{font-size:11px;font-weight:600;margin-top:2px;}
+.fm-val.zero{color:var(--text3);}
+/* Modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:center;justify-content:center;}
+.modal-overlay.open{display:flex;}
+.modal-box{background:var(--bg2);border:1px solid var(--border2);border-radius:12px;padding:1.5rem;width:520px;max-width:90vw;max-height:90vh;overflow-y:auto;}
+.modal-title{font-size:15px;font-weight:700;margin-bottom:1.25rem;}
+.modal-footer{display:flex;justify-content:flex-end;gap:10px;margin-top:1.25rem;}
+.btn-cancel{background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text2);font-size:13px;padding:8px 16px;cursor:pointer;}
+.btn-cancel:hover{border-color:var(--border2);}
+/* Color picker */
+.color-presets{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;}
+.cp{width:24px;height:24px;border-radius:4px;cursor:pointer;border:2px solid transparent;transition:transform .1s;}
+.cp:hover{transform:scale(1.15);}
+.cp.sel{border-color:#fff;}
+input[type=color]{width:36px;height:28px;padding:2px;border-radius:4px;cursor:pointer;}
+@media(max-width:700px){
+  main{padding:1rem;}
+  header{padding:.75rem 1rem;flex-wrap:wrap;}
+  .fg-p{grid-template-columns:1fr 1fr;}
+  .fg-p>*:first-child{grid-column:1/-1;}
+  .fg-p>button{grid-column:1/-1;width:100%;height:40px;}
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#2ea043" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+  <h1>Parcelinhas</h1>
+  <p>Entre com sua conta Google para acessar e sincronizar seus gastos.</p>
+  <button class="btn-google" onclick="signIn()">
+    <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20H24v8h11.3C33.7 33.6 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.7 1.1 7.8 2.9l5.7-5.7C33.9 6.5 29.2 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20c11 0 19.7-8 19.7-20 0-1.3-.1-2.7-.1-4z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16 19 13 24 13c3 0 5.7 1.1 7.8 2.9l5.7-5.7C33.9 6.5 29.2 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-1.9 13.5-5l-6.2-5.2C29.4 35.6 26.8 36.5 24 36.5c-5.2 0-9.6-3.4-11.2-8.1l-6.5 5C9.5 39.7 16.3 44 24 44z"/><path fill="#1976D2" d="M43.6 20H24v8h11.3c-.8 2.3-2.3 4.2-4.2 5.6l6.2 5.2C40.8 35.4 44 30.1 44 24c0-1.3-.1-2.7-.4-4z"/></svg>
+    Entrar com Google
+  </button>
+</div>
+
+<!-- APP -->
+<div id="app-screen">
+  <header>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2ea043" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+    <h1>Parcelinhas</h1>
+    <div class="year-sel">
+      <button class="yr-btn" onclick="changeYear(-1)">&#8249;</button>
+      <span class="yr-val" id="yr-display">2026</span>
+      <button class="yr-btn" onclick="changeYear(1)">&#8250;</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="user-info">
+      <img id="user-photo" src="" alt=""/>
+      <span id="user-name"></span>
+      <button class="btn-sm" onclick="signOut()">Sair</button>
+    </div>
+  </header>
+  <div class="saving" id="saving"></div>
+
+  <main>
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('resumo',this)">Resumo</button>
+      <button class="tab" onclick="switchTab('parcelas',this)">Parcelas</button>
+      <button class="tab" onclick="switchTab('fixos',this)">Gastos Fixos</button>
+      <button class="tab" onclick="switchTab('cartoes',this)">Cartões</button>
+    </div>
+
+    <!-- RESUMO -->
+    <div id="tab-resumo" class="tab-content active">
+      <div id="hero-mes"></div>
+      <div class="metrics" id="metrics-resumo"></div>
+      <div class="panel" id="chart-resumo-wrap" style="display:none;">
+        <div class="chart-hdr">
+          <span class="chart-title">Total mensal consolidado</span>
+          <div class="legend" id="legend-resumo"></div>
+        </div>
+        <div class="chart-wrap"><canvas id="chart-resumo" role="img" aria-label="Gráfico consolidado mensal"></canvas></div>
+      </div>
+    </div>
+
+    <!-- PARCELAS -->
+    <div id="tab-parcelas" class="tab-content">
+      <div class="metrics" id="metrics-parcelas"></div>
+      <div class="panel">
+        <div class="panel-hdr">
+          <span class="panel-title">Nova parcela</span>
+          <button class="btn-export" onclick="exportCSV('parcelas')">&#8595; Exportar CSV</button>
+        </div>
+        <div class="fg fg-p">
+          <div class="fl"><label>Descrição</label><input type="text" id="p-desc" placeholder="Ex: iPhone, Notebook…"/></div>
+          <div class="fl"><label>Valor / parcela (R$)</label><input type="number" id="p-valor" placeholder="0,00" step="0.01" min="0" oninput="updateTotalHint()"/></div>
+          <div class="fl"><label>Cartão</label><select id="p-cartao"></select></div>
+          <div class="fl"><label>Qtd parcelas</label><input type="number" id="p-qtd" value="1" min="1" max="60" step="1" oninput="updateTotalHint()"/></div>
+          <div class="fl"><label>Mês início</label>
+            <select id="p-inicio">
+              <option value="0">Jan</option><option value="1">Fev</option><option value="2">Mar</option><option value="3">Abr</option>
+              <option value="4">Mai</option><option value="5">Jun</option><option value="6">Jul</option><option value="7">Ago</option>
+              <option value="8">Set</option><option value="9">Out</option><option value="10">Nov</option><option value="11">Dez</option>
+            </select>
+          </div>
+          <button class="btn-primary" onclick="addParcela()">+ Adicionar</button>
+        </div>
+        <div class="total-hint" id="total-hint"></div>
+        <p class="panel-hint">Parcelas que ultrapassam dezembro continuam automaticamente no próximo ano • Clique na célula para marcar como pago</p>
+      </div>
+      <div class="panel">
+        <div class="tbl-wrap"><table id="table-parcelas"></table></div>
+        <div style="margin-top:10px;display:flex;gap:12px;align-items:center;">
+          <span class="archived-toggle" onclick="toggleShowArchived('parcelas')">
+            <span id="arch-p-label">Mostrar arquivadas</span>
+          </span>
+        </div>
+      </div>
+      <div class="panel" id="chart-parcelas-wrap" style="display:none;">
+        <div class="chart-hdr">
+          <span class="chart-title">Parcelas por mês</span>
+          <div class="legend" id="legend-parcelas"></div>
+        </div>
+        <div class="chart-wrap"><canvas id="chart-parcelas" role="img" aria-label="Gráfico de parcelas por mês e cartão"></canvas></div>
+      </div>
+    </div>
+
+    <!-- FIXOS -->
+    <div id="tab-fixos" class="tab-content">
+      <div class="metrics" id="metrics-fixos"></div>
+      <div class="panel">
+        <div class="panel-hdr">
+          <span class="panel-title">Novo gasto fixo</span>
+          <button class="btn-export" onclick="exportCSV('fixos')">&#8595; Exportar CSV</button>
+        </div>
+        <div class="fg fg-f">
+          <div class="fl"><label>Descrição</label><input type="text" id="f-desc" placeholder="Ex: Internet, Academia, Luz…"/></div>
+          <div class="fl"><label>Valor padrão (R$)</label><input type="number" id="f-valor" placeholder="0,00" step="0.01" min="0"/></div>
+          <button class="btn-primary" onclick="addFixo()">+ Adicionar</button>
+        </div>
+        <p class="panel-hint">Clique no valor para editar • Duplo clique para marcar como pago</p>
+      </div>
+      <div class="panel"><div class="tbl-wrap"><table id="table-fixos"></table></div></div>
+      <div class="panel" id="chart-fixos-wrap" style="display:none;">
+        <div class="chart-hdr"><span class="chart-title">Total fixo por mês</span></div>
+        <div class="chart-wrap"><canvas id="chart-fixos" role="img" aria-label="Gráfico de gastos fixos por mês"></canvas></div>
+      </div>
+    </div>
+
+    <!-- CARTÕES -->
+    <div id="tab-cartoes" class="tab-content">
+      <div class="panel">
+        <div class="panel-title">Gerenciar cartões</div>
+        <div class="fg fg-c" style="margin-bottom:1rem;">
+          <div class="fl"><label>Nome do cartão</label><input type="text" id="c-nome" placeholder="Ex: Nubank, C6, XP…"/></div>
+          <div class="fl">
+            <label>Cor</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <input type="color" id="c-cor" value="#1f6feb"/>
+              <div class="color-presets" id="color-presets"></div>
+            </div>
+          </div>
+          <button class="btn-primary" onclick="addCard()">+ Cartão</button>
+        </div>
+        <div class="card-list" id="card-list"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Fatura por cartão — <span id="fatura-year-label">2026</span></div>
+        <div class="fatura-grid" id="fatura-grid"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- EDIT MODAL -->
+<div class="modal-overlay" id="edit-modal">
+  <div class="modal-box">
+    <div class="modal-title" id="edit-modal-title">Editar parcela</div>
+    <div id="edit-modal-body"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
+      <button class="btn-primary" onclick="saveEdit()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ───────────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey:            "AIzaSyBfN00QYYTgiaOFwTquGkL4TUZVbAAtATA",
+  authDomain:        "gastos-e0ef8.firebaseapp.com",
+  projectId:         "gastos-e0ef8",
+  storageBucket:     "gastos-e0ef8.firebasestorage.app",
+  messagingSenderId: "189241437851",
+  appId:             "1:189241437851:web:18705288ec04bc504c603e"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db   = firebase.firestore();
+
+const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const DEFAULT_CARDS = [
+  {name:'Caixa',color:'#1f6feb'},{name:'Inter',color:'#e06030'},
+  {name:'Itaú',color:'#d4a017'},{name:'CL',color:'#8b5cf6'},
+  {name:'Afinz',color:'#10b981'}
+];
+const PRESET_COLORS = ['#1f6feb','#e06030','#d4a017','#8b5cf6','#10b981','#f85149','#db61a2','#58a6ff','#ffa657','#3fb950'];
+
+// ── STATE ────────────────────────────────────────────────────
+let cards       = [];
+let parcelas    = [];
+let fixos       = [];
+let userId      = null;
+let currentYear = 2026;
+let showArchP   = false;
+let unsubC = null, unsubP = null, unsubF = null;
+let chartR = null, chartP = null, chartF = null;
+let editingId   = null;
+let editingType = null;
+
+// ── UI ───────────────────────────────────────────────────────
+function switchTab(n, btn) {
+  document.querySelectorAll('.tab-content').forEach(e => e.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(e => e.classList.remove('active'));
+  document.getElementById('tab-'+n).classList.add('active');
+  btn.classList.add('active');
+}
+function changeYear(d) {
+  currentYear += d;
+  document.getElementById('yr-display').textContent = currentYear;
+  document.getElementById('fatura-year-label').textContent = currentYear;
+  listenFixos();
+  renderAll();
+}
+function sv(msg,cls='') {
+  const el=document.getElementById('saving');
+  el.textContent=msg; el.className='saving '+(cls?cls:'');
+  if(cls==='on') setTimeout(()=>{el.textContent='';el.className='saving';},2000);
+}
+function fR(v)  { return 'R$\u00a0'+v.toFixed(2).replace('.',','); }
+function fC(v)  { return v>0?'R$&nbsp;'+v.toFixed(2).replace('.',','):'<span class="val-empty">—</span>'; }
+
+// ── AUTH ─────────────────────────────────────────────────────
+function signIn()  { auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); }
+function signOut() { [unsubC,unsubP,unsubF].forEach(u=>u&&u()); auth.signOut(); }
+auth.onAuthStateChanged(user => {
+  if (user) {
+    userId = user.uid;
+    document.getElementById('login-screen').style.display='none';
+    document.getElementById('app-screen').style.display='block';
+    document.getElementById('user-name').textContent=user.displayName;
+    document.getElementById('user-photo').src=user.photoURL;
+    buildColorPresets();
+    listenAll();
+  } else {
+    userId=null; cards=[]; parcelas=[]; fixos=[];
+    document.getElementById('login-screen').style.display='flex';
+    document.getElementById('app-screen').style.display='none';
+  }
+});
+
+// ── COLLECTIONS ──────────────────────────────────────────────
+function colC() { return db.collection('users').doc(userId).collection('cards'); }
+function colP() { return db.collection('users').doc(userId).collection('parcelas'); }
+function colF() { return db.collection('users').doc(userId).collection('fixos').doc(String(currentYear)).collection('items'); }
+
+// ── LISTENERS ────────────────────────────────────────────────
+function listenAll() {
+  listenCards();
+  listenParcelas();
+  listenFixos();
+}
+function listenCards() {
+  if (unsubC) unsubC();
+  unsubC = colC().orderBy('createdAt','asc').onSnapshot(snap => {
+    cards = snap.docs.map(d=>({id:d.id,...d.data()}));
+    populateCardSelect();
+    renderCards();
+    renderFatura();
+  });
+}
+function listenParcelas() {
+  if (unsubP) unsubP();
+  unsubP = colP().orderBy('createdAt','asc').onSnapshot(snap => {
+    parcelas = snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderAll();
+  });
+}
+function listenFixos() {
+  if (unsubF) unsubF();
+  unsubF = colF().orderBy('createdAt','asc').onSnapshot(snap => {
+    fixos = snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderAll();
+  });
+}
+
+
+
+// ── CARDS CRUD ───────────────────────────────────────────────
+function buildColorPresets() {
+  const wrap = document.getElementById('color-presets');
+  wrap.innerHTML = PRESET_COLORS.map(c =>
+    `<div class="cp" style="background:${c}" onclick="selectPresetColor('${c}')" title="${c}"></div>`
+  ).join('');
+}
+function selectPresetColor(c) {
+  document.getElementById('c-cor').value=c;
+  document.querySelectorAll('.cp').forEach(el=>{
+    el.classList.toggle('sel', el.style.background===c||el.style.backgroundColor===hexToRgb(c));
+  });
+}
+function hexToRgb(hex){const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return `rgb(${r}, ${g}, ${b})`;}
+
+async function addCard() {
+  const name = document.getElementById('c-nome').value.trim();
+  const color = document.getElementById('c-cor').value;
+  if (!name) { document.getElementById('c-nome').focus(); return; }
+  sv('Salvando…','on');
+  try {
+    await colC().add({name, color, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+    sv('Salvo ✓','on');
+  } catch(e){sv('Erro ao salvar.','err');}
+  document.getElementById('c-nome').value='';
+}
+async function deleteCard(id) {
+  if(!confirm('Remover este cartão? As parcelas associadas a ele não serão apagadas.')) return;
+  sv('Removendo…','on');
+  await colC().doc(id).delete();
+  sv('Removido ✓','on');
+}
+function populateCardSelect() {
+  const sel=document.getElementById('p-cartao');
+  const cur=sel.value;
+  if (cards.length===0) {
+    sel.innerHTML='<option value="">— Crie um cartão primeiro —</option>';
+    return;
+  }
+  sel.innerHTML=cards.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  if(cur && cards.find(c=>c.id===cur)) sel.value=cur;
+}
+function cardById(id){ return cards.find(c=>c.id===id)||{name:id,color:'#8b949e'}; }
+
+// ── PARCELAS CRUD ────────────────────────────────────────────
+function updateTotalHint() {
+  const v=parseFloat(document.getElementById('p-valor').value)||0;
+  const q=parseInt(document.getElementById('p-qtd').value)||1;
+  const el=document.getElementById('total-hint');
+  if(v>0&&q>1) el.textContent=`Total da compra: ${fR(v*q)} (${q}x de ${fR(v)})`;
+  else el.textContent='';
+}
+
+async function addParcela() {
+  const desc   = document.getElementById('p-desc').value.trim();
+  const valor  = parseFloat(document.getElementById('p-valor').value);
+  const cardId = document.getElementById('p-cartao').value;
+  const qtd    = Math.max(1,parseInt(document.getElementById('p-qtd').value)||1);
+  const inicio = parseInt(document.getElementById('p-inicio').value);
+  if(!desc||isNaN(valor)||valor<=0||!cardId){document.getElementById('p-desc').focus();return;}
+  const pv=Math.round(valor*100)/100;
+  sv('Salvando…','on');
+  try {
+    await colP().add({
+      desc, cardId, valuePer:pv, totalQtd:qtd,
+      startYear:currentYear, startMonth:inicio,
+      paid:{}, archived:false,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    sv('Salvo ✓','on');
+  } catch(e){sv('Erro ao salvar.','err');return;}
+  document.getElementById('p-desc').value='';
+  document.getElementById('p-valor').value='';
+  document.getElementById('p-qtd').value='1';
+  document.getElementById('total-hint').textContent='';
+  document.getElementById('p-desc').focus();
+}
+
+async function deleteParcela(id) {
+  if(!confirm('Remover esta parcela permanentemente?')) return;
+  sv('Removendo…','on');
+  await colP().doc(id).delete();
+  sv('Removido ✓','on');
+}
+
+async function archiveParcela(id, val) {
+  sv('Salvando…','on');
+  await colP().doc(id).update({archived:val});
+  sv(val?'Arquivada ✓':'Restaurada ✓','on');
+}
+
+async function togglePaidParcela(id, year, month) {
+  const item=parcelas.find(p=>p.id===id); if(!item) return;
+  const key=`${year}-${month}`;
+  const paid={...(item.paid||{})};
+  paid[key]=!paid[key];
+  sv('Salvando…','on');
+  try{await colP().doc(id).update({paid});sv('Salvo ✓','on');}catch(e){sv('Erro.','err');}
+}
+
+// ── PARCELAS CROSS-YEAR HELPERS ──────────────────────────────
+function valsForYear(p,year) {
+  const vals=Array(12).fill(0);
+  for(let m=0;m<12;m++){
+    const idx=(year-p.startYear)*12+m-p.startMonth;
+    if(idx>=0&&idx<p.totalQtd) vals[m]=p.valuePer;
+  }
+  return vals;
+}
+function instNum(p,year,month){return(year-p.startYear)*12+month-p.startMonth+1;}
+function hasInYear(p,year){
+  const sg=p.startYear*12+p.startMonth;
+  const eg=sg+p.totalQtd-1;
+  return sg<=year*12+11&&eg>=year*12;
+}
+function isPaid(p,year,month){return!!(p.paid&&p.paid[`${year}-${month}`]);}
+function isAllPaidThisYear(p,year){
+  const v=valsForYear(p,year);
+  return v.some(x=>x>0)&&v.every((x,i)=>!x||isPaid(p,year,i));
+}
+
+// ── FIXOS CRUD ───────────────────────────────────────────────
+async function addFixo() {
+  const desc=document.getElementById('f-desc').value.trim();
+  const valor=parseFloat(document.getElementById('f-valor').value);
+  if(!desc||isNaN(valor)||valor<=0){document.getElementById('f-desc').focus();return;}
+  const pv=Math.round(valor*100)/100;
+  sv('Salvando…','on');
+  try{
+    await colF().add({desc,defaultValue:pv,values:Array(12).fill(pv),paid:Array(12).fill(false),createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+    sv('Salvo ✓','on');
+  }catch(e){sv('Erro.','err');return;}
+  document.getElementById('f-desc').value='';
+  document.getElementById('f-valor').value='';
+  document.getElementById('f-desc').focus();
+}
+async function deleteFixo(id){
+  if(!confirm('Remover este gasto fixo?')) return;
+  await colF().doc(id).delete();
+  sv('Removido ✓','on');
+}
+async function togglePaidFixo(id,i){
+  const item=fixos.find(f=>f.id===id);if(!item)return;
+  const paid=[...(item.paid||Array(12).fill(false))];
+  paid[i]=!paid[i];
+  sv('Salvando…','on');
+  try{await colF().doc(id).update({paid});sv('Salvo ✓','on');}catch(e){sv('Erro.','err');}
+}
+async function updateFixoVal(id,i,raw){
+  const v=Math.round((parseFloat(raw)||0)*100)/100;
+  const item=fixos.find(f=>f.id===id);if(!item)return;
+  const values=[...item.values];values[i]=v;
+  sv('Salvando…','on');
+  try{await colF().doc(id).update({values});sv('Salvo ✓','on');}catch(e){sv('Erro.','err');}
+}
+function startInlineEdit(td,id,i,cur){
+  if(td.querySelector('.ie')) return;
+  td.classList.add('cell-edit');
+  const inp=document.createElement('input');
+  inp.className='ie';inp.type='number';inp.step='0.01';
+  inp.value=cur>0?cur.toFixed(2):'';inp.placeholder='0,00';
+  td.appendChild(inp);inp.focus();inp.select();
+  const commit=()=>{updateFixoVal(id,i,inp.value);inp.remove();td.classList.remove('cell-edit');};
+  inp.addEventListener('blur',commit);
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter')inp.blur();if(e.key==='Escape'){inp.remove();td.classList.remove('cell-edit');}e.stopPropagation();});
+}
+
+// ── EDIT MODAL ───────────────────────────────────────────────
+function openEditParcela(id) {
+  const p=parcelas.find(x=>x.id===id);if(!p)return;
+  editingId=id; editingType='parcela';
+  const card=cardById(p.cardId);
+  document.getElementById('edit-modal-title').textContent='Editar parcela';
+  document.getElementById('edit-modal-body').innerHTML=`
+    <div class="fg" style="grid-template-columns:1fr 1fr;gap:10px;">
+      <div class="fl" style="grid-column:1/-1"><label>Descrição</label><input type="text" id="em-desc" value="${p.desc}"/></div>
+      <div class="fl"><label>Valor / parcela (R$)</label><input type="number" id="em-valor" value="${p.valuePer}" step="0.01"/></div>
+      <div class="fl"><label>Cartão</label><select id="em-cartao">${cards.map(c=>`<option value="${c.id}"${c.id===p.cardId?' selected':''}>${c.name}</option>`).join('')}</select></div>
+      <div class="fl"><label>Total de parcelas</label><input type="number" id="em-qtd" value="${p.totalQtd}" min="1" max="60"/></div>
+      <div class="fl"><label>Mês início</label><select id="em-inicio">${MESES.map((m,i)=>`<option value="${i}"${i===p.startMonth?' selected':''}>${m}</option>`).join('')}</select></div>
+    </div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+function openEditFixo(id) {
+  const f=fixos.find(x=>x.id===id);if(!f)return;
+  editingId=id; editingType='fixo';
+  document.getElementById('edit-modal-title').textContent='Editar gasto fixo';
+  document.getElementById('edit-modal-body').innerHTML=`
+    <div class="fg" style="grid-template-columns:1fr 1fr;gap:10px;">
+      <div class="fl" style="grid-column:1/-1"><label>Descrição</label><input type="text" id="em-desc" value="${f.desc}"/></div>
+      <div class="fl"><label>Novo valor padrão (R$)</label><input type="number" id="em-fvalor" value="${f.defaultValue}" step="0.01"/></div>
+      <div class="fl" style="display:flex;align-items:flex-end;padding-bottom:2px;"><label style="font-size:11px;color:var(--text2)"><input type="checkbox" id="em-apply-all" checked style="width:auto;margin-right:6px;"/> Aplicar a todos os meses</label></div>
+    </div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+function closeModal(){ document.getElementById('edit-modal').classList.remove('open'); editingId=null; editingType=null; }
+async function saveEdit(){
+  if(!editingId) return;
+  sv('Salvando…','on');
+  try {
+    if(editingType==='parcela'){
+      const desc=document.getElementById('em-desc').value.trim();
+      const vp=parseFloat(document.getElementById('em-valor').value);
+      const cardId=document.getElementById('em-cartao').value;
+      const qtd=parseInt(document.getElementById('em-qtd').value);
+      const sm=parseInt(document.getElementById('em-inicio').value);
+      if(!desc||isNaN(vp)){sv('Preencha todos os campos.','err');return;}
+      await colP().doc(editingId).update({desc,valuePer:Math.round(vp*100)/100,cardId,totalQtd:qtd,startMonth:sm});
+    } else {
+      const desc=document.getElementById('em-desc').value.trim();
+      const fv=parseFloat(document.getElementById('em-fvalor').value);
+      const applyAll=document.getElementById('em-apply-all').checked;
+      if(!desc||isNaN(fv)){sv('Preencha todos os campos.','err');return;}
+      const upd={desc,defaultValue:Math.round(fv*100)/100};
+      if(applyAll) upd.values=Array(12).fill(Math.round(fv*100)/100);
+      await colF().doc(editingId).update(upd);
+    }
+    sv('Salvo ✓','on'); closeModal();
+  } catch(e){sv('Erro ao salvar.','err');}
+}
+document.getElementById('edit-modal').addEventListener('click',e=>{if(e.target.id==='edit-modal')closeModal();});
+
+// ── ARCHIVE TOGGLE ───────────────────────────────────────────
+function toggleShowArchived(type){
+  if(type==='parcelas'){
+    showArchP=!showArchP;
+    document.getElementById('arch-p-label').textContent=showArchP?'Ocultar arquivadas':'Mostrar arquivadas';
+    renderTableParcelas();
+  }
+}
+
+// ── EXPORT CSV ───────────────────────────────────────────────
+function exportCSV(type){
+  let rows=[],fname='';
+  if(type==='parcelas'){
+    fname=`parcelas-${currentYear}.csv`;
+    rows=[['Descrição','Cartão','Parcelas','Total',  ...MESES]];
+    parcelas.filter(p=>hasInYear(p,currentYear)).forEach(p=>{
+      const v=valsForYear(p,currentYear);
+      const card=cardById(p.cardId);
+      rows.push([p.desc,card.name,p.totalQtd,fR(p.valuePer*p.totalQtd),...v.map(x=>x>0?x.toFixed(2):'')]);
+    });
+  } else {
+    fname=`fixos-${currentYear}.csv`;
+    rows=[['Descrição','Total Ano',...MESES]];
+    fixos.forEach(f=>{
+      rows.push([f.desc,fR(f.values.reduce((a,b)=>a+b,0)),...f.values.map(v=>v>0?v.toFixed(2):'')]);
+    });
+  }
+  const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;a.click();
+}
+
+// ── RENDER ALL ───────────────────────────────────────────────
+function renderAll(){ renderResumo(); renderParcelas(); renderFixos(); renderFatura(); }
+
+// ── RENDER: RESUMO ───────────────────────────────────────────
+function renderResumo(){
+  const mi=new Date().getMonth();
+  const pVals=parcelas.filter(p=>hasInYear(p,currentYear)&&!p.archived).map(p=>valsForYear(p,currentYear));
+  const pMonth=pVals.reduce((s,v)=>s+(v[mi]||0),0);
+  const fMonth=fixos.reduce((s,f)=>s+(f.values[mi]||0),0);
+  const totalMonth=pMonth+fMonth;
+  // per card breakdown
+  const cardBreakdown=cards.map(c=>{
+    const sum=parcelas.filter(p=>p.cardId===c.id&&!p.archived&&hasInYear(p,currentYear))
+      .reduce((s,p)=>s+(valsForYear(p,currentYear)[mi]||0),0);
+    return {c,sum};
+  }).filter(x=>x.sum>0);
+
+  document.getElementById('hero-mes').innerHTML=`
+    <div class="hero">
+      <div class="hero-month">${MESES[mi]} ${currentYear}</div>
+      <div class="hero-total">${fR(totalMonth)}</div>
+      ${fMonth>0?`<div class="hero-row"><span class="hero-label">Gastos fixos</span><span class="hero-val">${fR(fMonth)}</span></div>`:''}
+      ${cardBreakdown.map(x=>`<div class="hero-row">
+        <span class="hero-label" style="display:flex;align-items:center;gap:6px;">
+          <span style="width:8px;height:8px;border-radius:2px;background:${x.c.color};display:inline-block;"></span>${x.c.name}
+        </span>
+        <span class="hero-val">${fR(x.sum)}</span>
+      </div>`).join('')}
+      ${pMonth===0&&fMonth===0?`<div style="color:var(--text3);font-size:13px;">Nenhum gasto registrado neste mês.</div>`:''}
+    </div>`;
+
+  // annual metrics
+  const pTotals=MESES.map((_,i)=>parcelas.filter(p=>hasInYear(p,currentYear)&&!p.archived).reduce((s,p)=>s+(valsForYear(p,currentYear)[i]||0),0));
+  const fTotals=MESES.map((_,i)=>fixos.reduce((s,f)=>s+(f.values[i]||0),0));
+  const allTotals=MESES.map((_,i)=>pTotals[i]+fTotals[i]);
+  const totalAno=allTotals.reduce((a,b)=>a+b,0);
+  const maiorIdx=allTotals.indexOf(Math.max(...allTotals));
+  // paid progress
+  let ptc=0,ppc=0;
+  parcelas.filter(p=>hasInYear(p,currentYear)&&!p.archived).forEach(p=>{valsForYear(p,currentYear).forEach((v,i)=>{if(v>0){ptc++;if(isPaid(p,currentYear,i))ppc++;}});});
+  let ftc=0,fpc=0;
+  fixos.forEach(f=>{(f.paid||[]).forEach((b,i)=>{if(f.values[i]>0){ftc++;if(b)fpc++;}});});
+
+  document.getElementById('metrics-resumo').innerHTML=
+    [['Total '+currentYear,fR(totalAno)],['Total fixos',fR(fTotals.reduce((a,b)=>a+b,0))],
+     ['Total parcelas',fR(pTotals.reduce((a,b)=>a+b,0))],['Mês mais pesado',allTotals[maiorIdx]>0?MESES[maiorIdx]:'—']]
+    .map(([l,v])=>`<div class="mc"><div class="lb">${l}</div><div class="vl">${v}</div></div>`).join('')
+    +(ptc>0?`<div class="mc prog-card"><div class="prog-hdr"><span class="lb" style="margin:0">Parcelas pagas</span><span class="prog-count">${ppc}/${ptc}</span></div><div class="prog-bar"><div class="prog-fill" style="width:${Math.round(ppc/ptc*100)}%"></div></div><div class="prog-pct">${Math.round(ppc/ptc*100)}%</div></div>`:'')
+    +(ftc>0?`<div class="mc prog-card"><div class="prog-hdr"><span class="lb" style="margin:0">Fixos pagos</span><span class="prog-count">${fpc}/${ftc}</span></div><div class="prog-bar"><div class="prog-fill" style="width:${Math.round(fpc/ftc*100)}%"></div></div><div class="prog-pct">${Math.round(fpc/ftc*100)}%</div></div>`:'');
+
+  // combined chart
+  const wrap=document.getElementById('chart-resumo-wrap');
+  if(totalAno===0){wrap.style.display='none';return;}
+  wrap.style.display='block';
+  const activeCards=cards.filter(c=>parcelas.some(p=>p.cardId===c.id&&hasInYear(p,currentYear)&&!p.archived));
+  document.getElementById('legend-resumo').innerHTML=
+    (fTotals.some(v=>v>0)?`<span class="leg-item"><span class="leg-dot" style="background:#39d353"></span>Fixos</span>`:'')
+    +activeCards.map(c=>`<span class="leg-item"><span class="leg-dot" style="background:${c.color}"></span>${c.name}</span>`).join('');
+  if(chartR){chartR.destroy();chartR=null;}
+  const datasets=[];
+  if(fTotals.some(v=>v>0)) datasets.push({label:'Fixos',data:fTotals,backgroundColor:'#39d353',borderRadius:3,borderSkipped:false});
+  activeCards.forEach(c=>{
+    const data=MESES.map((_,i)=>Math.round(parcelas.filter(p=>p.cardId===c.id&&!p.archived&&hasInYear(p,currentYear)).reduce((s,p)=>s+(valsForYear(p,currentYear)[i]||0),0)*100)/100);
+    datasets.push({label:c.name,data,backgroundColor:c.color,borderRadius:3,borderSkipped:false});
+  });
+  chartR=new Chart(document.getElementById('chart-resumo'),{type:'bar',data:{labels:MESES,datasets},options:{
+    responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false},tooltip:{backgroundColor:'#161b22',borderColor:'#30363d',borderWidth:1,titleColor:'#e6edf3',bodyColor:'#8b949e',
+      callbacks:{label:ctx=>`${ctx.dataset.label}: ${fR(ctx.raw)}`}}},
+    scales:{x:{stacked:true,grid:{display:false},ticks:{font:{size:11},color:'#8b949e'},border:{color:'#30363d'}},
+      y:{stacked:true,border:{display:false},grid:{color:'#21262d'},ticks:{font:{size:11},color:'#8b949e',callback:v=>'R$'+v.toLocaleString('pt-BR')}}}
+  }});
+}
+
+// ── RENDER: PARCELAS ─────────────────────────────────────────
+function renderParcelas(){ renderMetricsParcelas(); renderTableParcelas(); renderChartParcelas(); }
+
+function renderMetricsParcelas(){
+  const visible=parcelas.filter(p=>hasInYear(p,currentYear)&&!p.archived);
+  const totals=MESES.map((_,i)=>visible.reduce((s,p)=>s+(valsForYear(p,currentYear)[i]||0),0));
+  const mi=new Date().getMonth();
+  const maiorIdx=totals.indexOf(Math.max(...totals));
+  let tc=0,pc=0;
+  visible.forEach(p=>{valsForYear(p,currentYear).forEach((v,i)=>{if(v>0){tc++;if(isPaid(p,currentYear,i))pc++;}});});
+  document.getElementById('metrics-parcelas').innerHTML=
+    [['Total parcelado '+currentYear,fR(totals.reduce((a,b)=>a+b,0))],[MESES[mi]+' — atual',fR(totals[mi])],
+     ['Compras parceladas',visible.filter(p=>p.totalQtd>1).length],['Mês mais pesado',totals[maiorIdx]>0?MESES[maiorIdx]:'—']]
+    .map(([l,v])=>`<div class="mc"><div class="lb">${l}</div><div class="vl">${v}</div></div>`).join('')
+    +(tc>0?`<div class="mc prog-card"><div class="prog-hdr"><span class="lb" style="margin:0">Parcelas pagas</span><span class="prog-count">${pc}/${tc}</span></div><div class="prog-bar"><div class="prog-fill" style="width:${Math.round(pc/tc*100)}%"></div></div><div class="prog-pct">${Math.round(pc/tc*100)}%</div></div>`:'');
+}
+
+function renderTableParcelas(){
+  const t=document.getElementById('table-parcelas');
+  const B='border-bottom:1px solid var(--border);';
+  const TH=`font-size:11px;font-weight:600;color:var(--text2);padding:7px 8px;${B}`;
+  let html=`<thead><tr>
+    <th class="thl" style="${TH}">Descrição</th><th class="thc" style="${TH}">Cartão</th><th class="thl" style="${TH}">Compra total</th>
+    ${MESES.map(m=>`<th style="${TH}text-align:right;">${m}</th>`).join('')}
+    <th style="${B}width:50px;"></th>
+  </tr></thead>`;
+
+  const visible=parcelas.filter(p=>hasInYear(p,currentYear)&&!p.archived);
+  const archived=parcelas.filter(p=>hasInYear(p,currentYear)&&p.archived);
+  const toShow=showArchP?[...visible,...archived]:visible;
+
+  if(toShow.length===0){
+    html+=`<tbody><tr><td colspan="${4+MESES.length}" class="empty">Nenhuma parcela em ${currentYear}. Adicione a primeira acima ↑</td></tr></tbody>`;
+  } else {
+    const card=cardById;
+    html+='<tbody>'+toShow.map(p=>{
+      const c=card(p.cardId);
+      const vals=valsForYear(p,currentYear);
+      const totalCompra=fR(p.valuePer*p.totalQtd);
+      const isArch=p.archived;
+      return `<tr style="opacity:${isArch?'0.5':'1'}">
+        <td class="tdl" style="${B}">${p.desc}${p.totalQtd>1?`<span class="badge">${p.totalQtd}x</span>`:''}${isArch?`<span class="badge" style="color:var(--neon-dim);border-color:var(--neon-dim);">arquivada</span>`:''}</td>
+        <td class="tdc" style="${B}"><span class="pill" style="background:${c.color}22;color:${c.color};border:1px solid ${c.color}44;">${c.name}</span></td>
+        <td class="tdl" style="${B};font-size:11px;color:var(--text2);">${totalCompra}</td>
+        ${vals.map((v,i)=>{
+          if(!v) return `<td style="${B}"><span class="val-empty">—</span></td>`;
+          const p2=isPaid(p,currentYear,i);
+          const n=instNum(p,currentYear,i);
+          return `<td class="${p2?'paid':'unpaid'}" style="${B}text-align:right;" onclick="togglePaidParcela('${p.id}',${currentYear},${i})" title="${p2?'Pago — clique para desmarcar':`${n}/${p.totalQtd} — clique para marcar como pago`}">
+            <span class="cv">${'R$&nbsp;'+v.toFixed(2).replace('.',',')}</span>
+            <span class="cl">${p2?'✓ pago':''}</span>
+          </td>`;
+        }).join('')}
+        <td style="${B}text-align:center;">
+          <button class="edit-btn" onclick="openEditParcela('${p.id}')" title="Editar">✎</button>
+          <button class="btn-arch" onclick="archiveParcela('${p.id}',${!isArch})" title="${isArch?'Restaurar':'Arquivar'}">${isArch?'↩':'▽'}</button>
+          <button class="del-btn" onclick="deleteParcela('${p.id}')" title="Excluir">&times;</button>
+        </td>
+      </tr>`;
+    }).join('')+'</tbody>';
+  }
+
+  const totals=MESES.map((_,i)=>parcelas.filter(p=>hasInYear(p,currentYear)&&!p.archived).reduce((s,p)=>s+(valsForYear(p,currentYear)[i]||0),0));
+  html+=`<tfoot><tr><td class="tdl" colspan="3">Total mensal</td>${totals.map(v=>`<td style="color:${v>0?'var(--text)':'var(--text3)'};">${fC(v)}</td>`).join('')}<td></td></tr></tfoot>`;
+  t.innerHTML=html;
+}
+
+function renderChartParcelas(){
+  const wrap=document.getElementById('chart-parcelas-wrap');
+  const visible=parcelas.filter(p=>hasInYear(p,currentYear)&&!p.archived);
+  if(!visible.length){wrap.style.display='none';return;}
+  wrap.style.display='block';
+  const activeCards=cards.filter(c=>visible.some(p=>p.cardId===c.id));
+  document.getElementById('legend-parcelas').innerHTML=activeCards.map(c=>`<span class="leg-item"><span class="leg-dot" style="background:${c.color}"></span>${c.name}</span>`).join('');
+  if(chartP){chartP.destroy();chartP=null;}
+  const datasets=activeCards.map(c=>({
+    label:c.name,backgroundColor:c.color,borderRadius:4,borderSkipped:false,
+    data:MESES.map((_,i)=>Math.round(visible.filter(p=>p.cardId===c.id).reduce((s,p)=>s+(valsForYear(p,currentYear)[i]||0),0)*100)/100)
+  })).filter(ds=>ds.data.some(v=>v>0));
+  chartP=new Chart(document.getElementById('chart-parcelas'),{type:'bar',data:{labels:MESES,datasets},options:{
+    responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false},tooltip:{backgroundColor:'#161b22',borderColor:'#30363d',borderWidth:1,titleColor:'#e6edf3',bodyColor:'#8b949e',
+      callbacks:{label:ctx=>`${ctx.dataset.label}: ${fR(ctx.raw)}`}}},
+    scales:{x:{stacked:true,grid:{display:false},ticks:{font:{size:11},color:'#8b949e'},border:{color:'#30363d'}},
+      y:{stacked:true,border:{display:false},grid:{color:'#21262d'},ticks:{font:{size:11},color:'#8b949e',callback:v=>'R$'+v.toLocaleString('pt-BR')}}}
+  }});
+}
+
+// ── RENDER: FIXOS ────────────────────────────────────────────
+function renderFixos(){ renderMetricsFixos(); renderTableFixos(); renderChartFixos(); }
+
+function renderMetricsFixos(){
+  const totals=MESES.map((_,i)=>fixos.reduce((s,f)=>s+(f.values[i]||0),0));
+  const mi=new Date().getMonth();
+  const maiorIdx=totals.indexOf(Math.max(...totals));
+  let tc=0,pc=0;
+  fixos.forEach(f=>{(f.paid||[]).forEach((b,i)=>{if(f.values[i]>0){tc++;if(b)pc++;}});});
+  document.getElementById('metrics-fixos').innerHTML=
+    [['Total fixo '+currentYear,fR(totals.reduce((a,b)=>a+b,0))],[MESES[mi]+' — atual',fR(totals[mi])],
+     ['Contas cadastradas',fixos.length],['Mês mais pesado',totals[maiorIdx]>0?MESES[maiorIdx]:'—']]
+    .map(([l,v])=>`<div class="mc"><div class="lb">${l}</div><div class="vl">${v}</div></div>`).join('')
+    +(tc>0?`<div class="mc prog-card"><div class="prog-hdr"><span class="lb" style="margin:0">Contas pagas</span><span class="prog-count">${pc}/${tc}</span></div><div class="prog-bar"><div class="prog-fill" style="width:${Math.round(pc/tc*100)}%"></div></div><div class="prog-pct">${Math.round(pc/tc*100)}%</div></div>`:'');
+}
+
+function renderTableFixos(){
+  const t=document.getElementById('table-fixos');
+  const B='border-bottom:1px solid var(--border);';
+  const TH=`font-size:11px;font-weight:600;color:var(--text2);padding:7px 8px;${B}`;
+  let html=`<thead><tr><th class="thl" style="${TH}">Descrição</th>${MESES.map(m=>`<th style="${TH}text-align:right;">${m}</th>`).join('')}<th style="${B}width:50px;"></th></tr></thead>`;
+  if(!fixos.length){
+    html+=`<tbody><tr><td colspan="${2+MESES.length}" class="empty">Nenhum gasto fixo em ${currentYear}. Adicione o primeiro acima ↑</td></tr></tbody>`;
+  } else {
+    html+='<tbody>'+fixos.map(f=>{
+      const paid=f.paid||Array(12).fill(false);
+      return `<tr>
+        <td class="tdl" style="${B}">${f.desc}</td>
+        ${f.values.map((v,i)=>{
+          const p=paid[i];
+          if(p) return `<td class="paid" style="${B}text-align:right;" ondblclick="togglePaidFixo('${f.id}',${i})" title="Pago — duplo clique para desmarcar"><span class="cv">${'R$&nbsp;'+v.toFixed(2).replace('.',',')}</span><span class="cl">✓ pago</span></td>`;
+          return `<td class="unpaid" style="${B}text-align:right;position:relative;" onclick="startInlineEdit(this,'${f.id}',${i},${v})" ondblclick="togglePaidFixo('${f.id}',${i})" title="Clique para editar • Duplo clique para pago"><span class="cv">${fC(v)}</span></td>`;
+        }).join('')}
+        <td style="${B}text-align:center;">
+          <button class="edit-btn" onclick="openEditFixo('${f.id}')" title="Editar">✎</button>
+          <button class="del-btn" onclick="deleteFixo('${f.id}')">&times;</button>
+        </td>
+      </tr>`;
+    }).join('')+'</tbody>';
+  }
+  const totals=MESES.map((_,i)=>fixos.reduce((s,f)=>s+(f.values[i]||0),0));
+  html+=`<tfoot><tr><td class="tdl">Total mensal</td>${totals.map(v=>`<td style="color:${v>0?'var(--text)':'var(--text3)'};">${fC(v)}</td>`).join('')}<td></td></tr></tfoot>`;
+  t.innerHTML=html;
+}
+
+function renderChartFixos(){
+  const wrap=document.getElementById('chart-fixos-wrap');
+  if(!fixos.length){wrap.style.display='none';return;}
+  wrap.style.display='block';
+  if(chartF){chartF.destroy();chartF=null;}
+  const totals=MESES.map((_,i)=>Math.round(fixos.reduce((s,f)=>s+(f.values[i]||0),0)*100)/100);
+  chartF=new Chart(document.getElementById('chart-fixos'),{type:'line',data:{labels:MESES,datasets:[{label:'Total fixo',data:totals,borderColor:'#39d353',backgroundColor:'rgba(57,211,83,0.08)',borderWidth:2,pointBackgroundColor:'#39d353',pointRadius:4,fill:true,tension:0.3}]},options:{
+    responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false},tooltip:{backgroundColor:'#161b22',borderColor:'#30363d',borderWidth:1,titleColor:'#e6edf3',bodyColor:'#8b949e',callbacks:{label:ctx=>`Total: ${fR(ctx.raw)}`}}},
+    scales:{x:{grid:{display:false},ticks:{font:{size:11},color:'#8b949e'},border:{color:'#30363d'}},
+      y:{border:{display:false},grid:{color:'#21262d'},ticks:{font:{size:11},color:'#8b949e',callback:v=>'R$'+v.toLocaleString('pt-BR')}}}
+  }});
+}
+
+// ── RENDER: CARTÕES ──────────────────────────────────────────
+function renderCards(){
+  document.getElementById('card-list').innerHTML=cards.map(c=>`
+    <div class="card-item">
+      <span class="card-swatch" style="background:${c.color}"></span>
+      <span class="card-name">${c.name}</span>
+      <button class="del-btn" onclick="deleteCard('${c.id}')" title="Remover">&times;</button>
+    </div>`).join('');
+}
+
+function renderFatura(){
+  document.getElementById('fatura-year-label').textContent=currentYear;
+  const grid=document.getElementById('fatura-grid');
+  if(!cards.length){grid.innerHTML='<p style="color:var(--text3);font-size:13px;">Nenhum cartão cadastrado.</p>';return;}
+  grid.innerHTML=cards.map(c=>{
+    const cParcelas=parcelas.filter(p=>p.cardId===c.id&&!p.archived&&hasInYear(p,currentYear));
+    if(!cParcelas.length) return '';
+    const monthly=MESES.map((_,i)=>cParcelas.reduce((s,p)=>s+(valsForYear(p,currentYear)[i]||0),0));
+    const total=monthly.reduce((a,b)=>a+b,0);
+    return `<div class="fatura-card">
+      <div class="fatura-card-hdr">
+        <span class="card-swatch" style="background:${c.color}"></span>
+        <span class="fatura-card-name">${c.name}</span>
+        <span class="fatura-card-total">${fR(total)}</span>
+      </div>
+      <div class="fatura-months">
+        ${MESES.map((m,i)=>`<div class="fm">
+          <div class="fm-label">${m}</div>
+          <div class="fm-val${monthly[i]===0?' zero':''}">${monthly[i]>0?'R$&nbsp;'+monthly[i].toFixed(2).replace('.',','):'—'}</div>
+        </div>`).join('')}
+      </div>
+    </div>`;
+  }).filter(Boolean).join('') || '<p style="color:var(--text3);font-size:13px;">Nenhuma parcela registrada para este ano.</p>';
+}
+
+// ── KEYBOARD ─────────────────────────────────────────────────
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape') closeModal();
+  if(e.key==='Enter'&&!['BUTTON','SELECT','INPUT'].includes(document.activeElement.tagName)){
+    if(document.getElementById('tab-parcelas').classList.contains('active')) addParcela();
+    else if(document.getElementById('tab-fixos').classList.contains('active')) addFixo();
+    else if(document.getElementById('tab-cartoes').classList.contains('active')) addCard();
+  }
+});
+</script>
+</body>
+</html>
