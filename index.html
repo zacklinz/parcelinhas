@@ -529,6 +529,7 @@ const PRESET_COLORS = ['#1f6feb','#e06030','#d4a017','#8b5cf6','#10b981','#f8514
 let cards       = [];
 let parcelas    = [];
 let fixos       = [];
+let resumoMonth = new Date().getMonth();
 let somaSelCards = {};
 let somaSelFixos = {};
 let somaMultCards = {};
@@ -917,8 +918,10 @@ function effectiveCardMonthVal(cardId, month, year){
 }
 
 // ── RENDER: RESUMO ───────────────────────────────────────────
+function changeResumoMonth(d){ resumoMonth=(resumoMonth+d+12)%12; renderResumo(); }
+
 function renderResumo(){
-  const mi=new Date().getMonth();
+  const mi=resumoMonth;
   const pMonth=cards.reduce((s,c)=>s+effectiveCardMonthVal(c.id,mi,currentYear),0);
   const fMonth=fixos.reduce((s,f)=>s+(f.values[mi]||0),0);
   const totalMonth=pMonth+fMonth;
@@ -927,7 +930,11 @@ function renderResumo(){
 
   document.getElementById('hero-mes').innerHTML=`
     <div class="hero">
-      <div class="hero-month">${MESES[mi]} ${currentYear}</div>
+      <div class="hero-month" style="display:flex;align-items:center;justify-content:center;gap:10px;">
+        <button onclick="changeResumoMonth(-1)" style="background:none;border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:14px;line-height:1.4;">‹</button>
+        <span>${MESES[mi]} ${currentYear}</span>
+        <button onclick="changeResumoMonth(1)" style="background:none;border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:14px;line-height:1.4;">›</button>
+      </div>
       <div class="hero-total">${fR(totalMonth)}</div>
       ${fMonth>0?`<div class="hero-row"><span class="hero-label">Gastos fixos</span><span class="hero-val">${fR(fMonth)}</span></div>`:''}
       ${cardBreakdown.map(x=>`<div class="hero-row">
