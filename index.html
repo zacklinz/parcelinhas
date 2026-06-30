@@ -135,6 +135,9 @@ select option{background:var(--bg3);}
 .soma-item .si-name{flex:1;font-size:13px;}
 .soma-item .si-val{font-size:13px;font-weight:600;color:var(--text2);}
 .soma-empty{color:var(--text3);font-size:13px;padding:1rem;text-align:center;}
+.mult-btn{background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text3);font-size:10px;padding:1px 5px;cursor:pointer;line-height:1.4;transition:all .12s;margin-left:4px;flex-shrink:0;}
+.mult-btn:hover{border-color:var(--neon-dim);color:var(--neon);}
+.si-mult{font-size:11px;font-weight:700;color:var(--neon);margin-left:2px;min-width:14px;flex-shrink:0;}
 /* Month totals strip */
 .mstrip{display:grid;grid-template-columns:repeat(12,1fr);gap:4px;}
 .mstrip-cell{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 2px;text-align:center;}
@@ -523,6 +526,8 @@ let parcelas    = [];
 let fixos       = [];
 let somaSelCards = {};
 let somaSelFixos = {};
+let somaMultCards = {};
+let somaMultFixos = {};
 let somaInit     = false;
 let userId      = null;
 let currentYear = 2026;
@@ -1018,9 +1023,15 @@ function renderTableParcelas(){
 
   function buildGroup(cardObj, cardKey, list){
     const monthly=MESES.map((_,i)=>list.reduce((s,p)=>s+(valsForYear(p,currentYear)[i]||0),0));
-    const total=monthly.reduce((a,b)=>a+b,0);
+    const today=new Date(); const calYear=today.getFullYear(); const calMonth=today.getMonth();
+    const unpaidTotal=MESES.reduce((s,_,i)=>s+list.reduce((s2,p)=>{const v=valsForYear(p,currentYear)[i]||0;return s2+(isPaid(p,currentYear,i)?0:v);},0),0);
     const isOpen=!!openGroups[cardKey];
-    const miniMonths=MESES.map((m,i)=>monthly[i]>0?`<span class="cgroup-mini">${m} <b>${'R$'+monthly[i].toFixed(0)}</b></span>`:'').join('');
+    // mini months: only show from current month onwards when viewing current year; all months for future years
+    const miniStart=currentYear===calYear?calMonth:(currentYear<calYear?0:0);
+    const miniMonths=MESES.map((m,i)=>{
+      if(currentYear===calYear&&i<calMonth) return '';
+      return monthly[i]>0?`<span class="cgroup-mini">${m} <b>${'R$'+monthly[i].toFixed(0)}</b></span>`:'';
+    }).join('');
 
     // detailed table
     let table=`<div class="tbl-wrap"><table>
@@ -1062,7 +1073,7 @@ function renderTableParcelas(){
         <span class="cgroup-swatch" style="background:${cardObj.color}"></span>
         <span class="cgroup-name">${cardObj.name}</span>
         <span class="cgroup-months">${miniMonths}</span>
-        <span class="cgroup-total">${fR(total)}</span>
+        <span class="cgroup-total" title="A pagar">${fR(unpaidTotal)}</span>
       </div>
       <div class="cgroup-body">${table}</div>
     </div>`;
@@ -1215,6 +1226,9 @@ function renderFatura(){
 // ── SOMA DO MÊS ──────────────────────────────────────────────
 function toggleSomaCard(id){ somaSelCards[id]=!somaSelCards[id]; renderSoma(); }
 function toggleSomaFixo(id){ somaSelFixos[id]=!somaSelFixos[id]; renderSoma(); }
+function incrSomaCard(id){ somaMultCards[id]=(somaMultCards[id]||1)+1; renderSoma(); }
+function incrSomaFixo(id){ somaMultFixos[id]=(somaMultFixos[id]||1)+1; renderSoma(); }
+function resetSomaMult(type,id){ if(type==='card') somaMultCards[id]=1; else somaMultFixos[id]=1; renderSoma(); }
 
 function renderSoma(){
   const sel=document.getElementById('soma-mes');
@@ -1236,25 +1250,33 @@ function renderSoma(){
   const cardsEl=document.getElementById('soma-cards');
   const fixEl=document.getElementById('soma-fixos');
 
-  cardsEl.innerHTML = cardRows.length? cardRows.map(({c,val})=>`
-    <label class="soma-item">
+  cardsEl.innerHTML = cardRows.length? cardRows.map(({c,val})=>{
+    const mult=somaMultCards[c.id]||1;
+    return `<label class="soma-item">
       <input type="checkbox" ${somaSelCards[c.id]?'checked':''} onchange="toggleSomaCard('${c.id}')"/>
       <span class="si-swatch" style="background:${c.color}"></span>
       <span class="si-name">${c.name}</span>
       <span class="si-val">${fR(val)}</span>
-    </label>`).join('') : '<div class="soma-empty">Nenhum cartão com parcela neste mês.</div>';
+      ${mult>1?`<span class="si-mult" onclick="resetSomaMult('card','${c.id}');event.preventDefault();event.stopPropagation();" title="Clique para resetar">×${mult}</span>`:''}
+      <button class="mult-btn" onclick="incrSomaCard('${c.id}');event.preventDefault();event.stopPropagation();" title="Duplicar (atraso)">+1</button>
+    </label>`;
+  }).join('') : '<div class="soma-empty">Nenhum cartão com parcela neste mês.</div>';
 
-  fixEl.innerHTML = fixRows.length? fixRows.map(({f,val})=>`
-    <label class="soma-item">
+  fixEl.innerHTML = fixRows.length? fixRows.map(({f,val})=>{
+    const mult=somaMultFixos[f.id]||1;
+    return `<label class="soma-item">
       <input type="checkbox" ${somaSelFixos[f.id]?'checked':''} onchange="toggleSomaFixo('${f.id}')"/>
       <span class="si-name">${f.desc}</span>
       <span class="si-val">${fR(val)}</span>
-    </label>`).join('') : '<div class="soma-empty">Nenhuma conta fixa neste mês.</div>';
+      ${mult>1?`<span class="si-mult" onclick="resetSomaMult('fixo','${f.id}');event.preventDefault();event.stopPropagation();" title="Clique para resetar">×${mult}</span>`:''}
+      <button class="mult-btn" onclick="incrSomaFixo('${f.id}');event.preventDefault();event.stopPropagation();" title="Duplicar (atraso)">+1</button>
+    </label>`;
+  }).join('') : '<div class="soma-empty">Nenhuma conta fixa neste mês.</div>';
 
-  // compute total of selection
+  // compute total of selection using multipliers
   let total=0; const parts=[];
-  cardRows.forEach(({c,val})=>{ if(somaSelCards[c.id]){ total+=val; parts.push({name:c.name,color:c.color,val}); } });
-  fixRows.forEach(({f,val})=>{ if(somaSelFixos[f.id]){ total+=val; parts.push({name:f.desc,color:'#39d353',val}); } });
+  cardRows.forEach(({c,val})=>{ if(somaSelCards[c.id]){ const m=somaMultCards[c.id]||1; total+=val*m; parts.push({name:c.name+(m>1?` ×${m}`:''),color:c.color,val:val*m}); } });
+  fixRows.forEach(({f,val})=>{ if(somaSelFixos[f.id]){ const m=somaMultFixos[f.id]||1; total+=val*m; parts.push({name:f.desc+(m>1?` ×${m}`:''),color:'#39d353',val:val*m}); } });
 
   document.getElementById('soma-result-label').textContent=`Total selecionado — ${MESES[mi]} ${currentYear}`;
   document.getElementById('soma-result-total').textContent=fR(total);
