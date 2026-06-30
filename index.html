@@ -1003,15 +1003,14 @@ function renderTableParcelas(){
   const wrap=document.getElementById('parcelas-groups');
   const B='border-bottom:1px solid var(--border);';
   const TH=`font-size:11px;font-weight:600;color:var(--text2);padding:7px 8px;${B}`;
-  // shared colgroup — same widths across strip + all group tables
-  const CG=`<colgroup><col style="width:22%"/><col style="width:9%"/>${MESES.map(()=>'<col style="width:5.25%"/>').join('')}<col style="width:50px"/></colgroup>`;
+  // shared colgroup: meses primeiro, depois desc/total/ações
+  const CG=`<colgroup>${MESES.map(()=>'<col style="width:5.5%"/>').join('')}<col style="width:19%"/><col style="width:8%"/><col style="width:50px"/></colgroup>`;
 
   // month totals strip
   const stripTotals=MESES.map((_,i)=>parcelas.filter(p=>hasInYear(p,currentYear)&&!p.archived).reduce((s,p)=>s+(valsForYear(p,currentYear)[i]||0),0));
   const curMonth=new Date().getMonth();
   const MS='padding:5px 2px;text-align:center;cursor:pointer;border-radius:var(--radius-sm);transition:background .15s;';
   document.getElementById('month-totals-strip').innerHTML=`<div class="tbl-wrap" style="margin-bottom:1rem;"><table style="min-width:900px;table-layout:fixed;">${CG}<tbody><tr>
-    <td colspan="2" style="padding:0 8px;font-size:11px;color:var(--text3);white-space:nowrap;">Total / mês</td>
     ${MESES.map((m,i)=>{
       const isCur=i===curMonth; const isSel=i===selectedMonth;
       const bg=isSel?'background:rgba(57,211,83,0.08);border:1px solid var(--neon-dim);':'background:var(--bg3);border:1px solid var(--border);';
@@ -1021,7 +1020,7 @@ function renderTableParcelas(){
         <div style="font-size:11px;font-weight:700;margin-top:2px;color:${stripTotals[i]>0?'var(--text)':'var(--text3)'};">${stripTotals[i]>0?'R$'+stripTotals[i].toFixed(0):'—'}</div>
       </td>`;
     }).join('')}
-    <td style="width:50px;"></td>
+    <td colspan="3" style="padding:0 8px;font-size:11px;color:var(--text3);">descrição</td>
   </tr></tbody></table></div>`;
 
   const inYear=parcelas.filter(p=>hasInYear(p,currentYear)&&(showArchP||!p.archived));
@@ -1049,11 +1048,11 @@ function renderTableParcelas(){
       return monthly[i]>0?`<span class="cgroup-mini">${m} <b>${'R$'+monthly[i].toFixed(0)}</b></span>`:'';
     }).join('');
 
-    // detailed table
+    // detailed table — meses primeiro, desc/total no final
     let table=`<div class="tbl-wrap"><table style="min-width:900px;table-layout:fixed;">${CG}
       <thead><tr>
-        <th class="thl" style="${TH}">Descrição</th><th class="thl" style="${TH}">Compra total</th>
         ${MESES.map(m=>`<th style="${TH}text-align:right;">${m}</th>`).join('')}
+        <th class="thl" style="${TH}">Descrição</th><th class="thl" style="${TH}">Total</th>
         <th style="${B}width:50px;"></th>
       </tr></thead><tbody>`;
     table+=list.map(p=>{
@@ -1061,8 +1060,6 @@ function renderTableParcelas(){
       const totalCompra=fR(p.valuePer*p.totalQtd);
       const isArch=p.archived;
       return `<tr style="opacity:${isArch?'0.5':'1'}">
-        <td class="tdl" style="${B}">${p.desc}${p.totalQtd>1?`<span class="badge">${p.totalQtd}x</span>`:''}${isArch?`<span class="badge" style="color:var(--neon-dim);border-color:var(--neon-dim);">arquivada</span>`:''}</td>
-        <td class="tdl" style="${B};font-size:11px;color:var(--text2);">${totalCompra}</td>
         ${vals.map((v,i)=>{
           const selCls=selectedMonth===i?' col-sel':'';
           if(!v) return `<td class="${selCls}" style="${B}"><span class="val-empty">—</span></td>`;
@@ -1073,6 +1070,8 @@ function renderTableParcelas(){
             <span class="cl">${p2?'✓ pago':''}</span>
           </td>`;
         }).join('')}
+        <td class="tdl" style="${B}">${p.desc}${p.totalQtd>1?`<span class="badge">${p.totalQtd}x</span>`:''}${isArch?`<span class="badge" style="color:var(--neon-dim);border-color:var(--neon-dim);">arquivada</span>`:''}</td>
+        <td class="tdl" style="${B};font-size:11px;color:var(--text2);">${totalCompra}</td>
         <td style="${B}text-align:center;">
           <button class="edit-btn" onclick="openEditParcela('${p.id}')" title="Editar">✎</button>
           <button class="btn-arch" onclick="archiveParcela('${p.id}',${!isArch})" title="${isArch?'Restaurar':'Arquivar'}">${isArch?'↩':'▽'}</button>
@@ -1081,7 +1080,7 @@ function renderTableParcelas(){
       </tr>`;
     }).join('');
     // subtotal row per group
-    table+=`<tr><td class="tdl" colspan="2" style="${B}font-weight:600;color:var(--text2);font-size:11px;">Subtotal ${cardObj.name}</td>${monthly.map((v,i)=>`<td class="${selectedMonth===i?'col-sel':''}" style="${B}text-align:right;font-weight:600;color:${v>0?'var(--text)':'var(--text3)'};">${fC(v)}</td>`).join('')}<td style="${B}"></td></tr>`;
+    table+=`<tr>${monthly.map((v,i)=>`<td class="${selectedMonth===i?'col-sel':''}" style="${B}text-align:right;font-weight:600;color:${v>0?'var(--text)':'var(--text3)'};">${fC(v)}</td>`).join('')}<td class="tdl" colspan="2" style="${B}font-weight:600;color:var(--text2);font-size:11px;">Subtotal ${cardObj.name}</td><td style="${B}"></td></tr>`;
     table+='</tbody></table></div>';
 
     return `<div class="cgroup ${isOpen?'open':''}">
@@ -1115,11 +1114,10 @@ function renderTableParcelas(){
       <span class="cgroup-total" title="A pagar">${fR(grandUnpaid)}</span>
     </div>
     <div class="cgroup-body"><div class="tbl-wrap"><table style="min-width:900px;table-layout:fixed;">${CG}<tbody>
-      <tr><td class="tdl" style="${B}font-size:11px;color:var(--text2);">Por mês:</td><td style="${B}"></td>
-      ${grandMonthly.map((v,i)=>`<td class="${selectedMonth===i?'col-sel':''}" style="${B}text-align:center;padding:7px 6px;">
+      <tr>${grandMonthly.map((v,i)=>`<td class="${selectedMonth===i?'col-sel':''}" style="${B}text-align:center;padding:7px 6px;">
         <div style="font-size:9px;color:var(--text2);text-transform:uppercase;">${MESES[i]}</div>
         <div style="font-size:11px;font-weight:600;color:${v>0?'var(--text)':'var(--text3)'};">${v>0?'R$'+v.toFixed(0):'—'}</div>
-      </td>`).join('')}</tr>
+      </td>`).join('')}<td class="tdl" colspan="3" style="${B}font-size:11px;color:var(--text2);">por mês</td></tr>
     </tbody></table></div></div>
   </div>`;
 
