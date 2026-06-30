@@ -1325,34 +1325,7 @@ function renderSoma(){
       <span class="hero-val">${fR(p.val)}</span>
     </div>`).join('') : '<div style="color:var(--text3);font-size:13px;">Marque itens à esquerda para somar.</div>';
 
-  // ── HISTÓRICO DE FATURAS DIGITADAS ──
-  // meses que têm pelo menos uma fatura digitada
-  const histMeses=MESES.map((_,i)=>{
-    const entries=cards.map(c=>({c,v:(somaFatura[c.id]||{})[i]||0})).filter(x=>x.v>0);
-    return {i,entries,total:entries.reduce((s,x)=>s+x.v,0)};
-  }).filter(x=>x.entries.length>0);
-
-  const histEl=document.getElementById('soma-history');
-  if(!histMeses.length){ histEl.innerHTML=''; return; }
-  const grandFatura=histMeses.reduce((s,m)=>s+m.total,0);
-  histEl.innerHTML=`<div class="panel" style="margin-top:1.25rem;">
-    <div class="panel-hdr" style="margin-bottom:.75rem;">
-      <span class="panel-title">Histórico de faturas digitadas</span>
-      <span style="font-size:13px;font-weight:700;color:var(--neon);">${fR(grandFatura)}</span>
-    </div>
-    ${histMeses.map(({i,entries,total})=>`
-      <div style="border-top:1px solid var(--border);padding:8px 0;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-          <span style="font-size:12px;font-weight:600;color:var(--text2);">${MESES[i]} ${currentYear}</span>
-          <span style="font-size:13px;font-weight:700;color:var(--text);">${fR(total)}</span>
-        </div>
-        ${entries.map(({c,v})=>`<div style="display:flex;align-items:center;gap:6px;padding:2px 0 2px 8px;">
-          <span style="width:7px;height:7px;border-radius:2px;background:${c.color};display:inline-block;flex-shrink:0;"></span>
-          <span style="font-size:12px;color:var(--text2);flex:1;">${c.name}</span>
-          <span style="font-size:12px;font-weight:600;color:var(--text);">${fR(v)}</span>
-        </div>`).join('')}
-      </div>`).join('')}
-  </div>`;
+  document.getElementById('soma-history').innerHTML='';
 }
 
 // ── LANDING / PRIVACY ───────────────────────────────────────
