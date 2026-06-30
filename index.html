@@ -1004,18 +1004,23 @@ function renderTableParcelas(){
   const B='border-bottom:1px solid var(--border);';
   const TH=`font-size:11px;font-weight:600;color:var(--text2);padding:7px 8px;${B}`;
 
-  // month totals strip (always visible, no need to scroll)
+  // month totals strip — rendered as a table row to align with group tables below
   const stripTotals=MESES.map((_,i)=>parcelas.filter(p=>hasInYear(p,currentYear)&&!p.archived).reduce((s,p)=>s+(valsForYear(p,currentYear)[i]||0),0));
   const curMonth=new Date().getMonth();
-  document.getElementById('month-totals-strip').innerHTML=`<div class="mstrip">
+  const MS='padding:5px 2px;text-align:center;cursor:pointer;border-radius:var(--radius-sm);transition:background .15s;';
+  document.getElementById('month-totals-strip').innerHTML=`<div class="tbl-wrap" style="margin-bottom:1rem;"><table style="min-width:900px;"><tbody><tr>
+    <td colspan="2" style="padding:0 8px;font-size:11px;color:var(--text3);white-space:nowrap;">Total / mês</td>
     ${MESES.map((m,i)=>{
-      const cls=[i===curMonth?'current':'',i===selectedMonth?'sel':''].filter(Boolean).join(' ');
-      return `<div class="mstrip-cell${cls?' '+cls:''}" onclick="selectMonth(${i})">
-        <div class="mstrip-label">${m}</div>
-        <div class="mstrip-val${stripTotals[i]>0?'':' zero'}">${stripTotals[i]>0?'R$'+stripTotals[i].toFixed(0):'—'}</div>
-      </div>`;
+      const isCur=i===curMonth; const isSel=i===selectedMonth;
+      const bg=isSel?'background:rgba(57,211,83,0.08);border:1px solid var(--neon-dim);':'background:var(--bg3);border:1px solid var(--border);';
+      const dot=isCur?`<span style="color:var(--neon-dim);margin-left:1px;">·</span>`:'';
+      return `<td style="${MS}${bg}" onclick="selectMonth(${i})">
+        <div style="font-size:9px;color:var(--text2);text-transform:uppercase;letter-spacing:.3px;">${m}${dot}</div>
+        <div style="font-size:11px;font-weight:700;margin-top:2px;color:${stripTotals[i]>0?'var(--text)':'var(--text3)'};">${stripTotals[i]>0?'R$'+stripTotals[i].toFixed(0):'—'}</div>
+      </td>`;
     }).join('')}
-  </div>`;
+    <td style="width:50px;"></td>
+  </tr></tbody></table></div>`;
 
   const inYear=parcelas.filter(p=>hasInYear(p,currentYear)&&(showArchP||!p.archived));
   if(inYear.length===0){
