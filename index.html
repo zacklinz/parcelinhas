@@ -140,11 +140,15 @@ select option{background:var(--bg3);}
 .si-mult{font-size:11px;font-weight:700;color:var(--neon);margin-left:2px;min-width:14px;flex-shrink:0;}
 /* Month totals strip */
 .mstrip{display:grid;grid-template-columns:repeat(12,1fr);gap:4px;}
-.mstrip-cell{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 2px;text-align:center;}
-.mstrip-cell.current{border-color:var(--neon-dim);background:var(--neon-bg);}
+.mstrip-cell{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 2px;text-align:center;cursor:pointer;transition:background .15s;}
+.mstrip-cell:hover{background:var(--border);}
+.mstrip-cell.current{border-color:var(--border2);background:var(--bg3);}
+.mstrip-cell.current .mstrip-label::after{content:'·';color:var(--neon-dim);margin-left:2px;}
+.mstrip-cell.sel{border-color:var(--neon-dim);background:rgba(57,211,83,0.08);}
 .mstrip-label{font-size:9px;color:var(--text2);text-transform:uppercase;letter-spacing:.3px;}
 .mstrip-val{font-size:11px;font-weight:700;margin-top:2px;}
 .mstrip-val.zero{color:var(--text3);font-weight:400;}
+.col-sel{background:rgba(57,211,83,0.06)!important;}
 @media(max-width:700px){.mstrip{grid-template-columns:repeat(6,1fr);}}
 /* Table */
 .tbl-wrap{overflow-x:auto;}
@@ -533,6 +537,7 @@ let userId      = null;
 let currentYear = 2026;
 let showArchP   = false;
 let openGroups  = {};
+let selectedMonth = null;
 let allExpanded = false;
 let unsubC = null, unsubP = null, unsubF = null;
 let chartR = null, chartP = null, chartF = null;
@@ -981,6 +986,7 @@ function renderMetricsParcelas(){
     +(tc>0?`<div class="mc prog-card"><div class="prog-hdr"><span class="lb" style="margin:0">Parcelas pagas</span><span class="prog-count">${pc}/${tc}</span></div><div class="prog-bar"><div class="prog-fill" style="width:${Math.round(pc/tc*100)}%"></div></div><div class="prog-pct">${Math.round(pc/tc*100)}%</div></div>`:'');
 }
 
+function selectMonth(i){ selectedMonth=selectedMonth===i?null:i; renderTableParcelas(); }
 function toggleGroup(cardId){
   openGroups[cardId]=!openGroups[cardId];
   renderTableParcelas();
@@ -1002,10 +1008,13 @@ function renderTableParcelas(){
   const stripTotals=MESES.map((_,i)=>parcelas.filter(p=>hasInYear(p,currentYear)&&!p.archived).reduce((s,p)=>s+(valsForYear(p,currentYear)[i]||0),0));
   const curMonth=new Date().getMonth();
   document.getElementById('month-totals-strip').innerHTML=`<div class="mstrip">
-    ${MESES.map((m,i)=>`<div class="mstrip-cell${i===curMonth?' current':''}">
-      <div class="mstrip-label">${m}</div>
-      <div class="mstrip-val${stripTotals[i]>0?'':' zero'}">${stripTotals[i]>0?'R$'+stripTotals[i].toFixed(0):'—'}</div>
-    </div>`).join('')}
+    ${MESES.map((m,i)=>{
+      const cls=[i===curMonth?'current':'',i===selectedMonth?'sel':''].filter(Boolean).join(' ');
+      return `<div class="mstrip-cell${cls?' '+cls:''}" onclick="selectMonth(${i})">
+        <div class="mstrip-label">${m}</div>
+        <div class="mstrip-val${stripTotals[i]>0?'':' zero'}">${stripTotals[i]>0?'R$'+stripTotals[i].toFixed(0):'—'}</div>
+      </div>`;
+    }).join('')}
   </div>`;
 
   const inYear=parcelas.filter(p=>hasInYear(p,currentYear)&&(showArchP||!p.archived));
@@ -1048,10 +1057,11 @@ function renderTableParcelas(){
         <td class="tdl" style="${B}">${p.desc}${p.totalQtd>1?`<span class="badge">${p.totalQtd}x</span>`:''}${isArch?`<span class="badge" style="color:var(--neon-dim);border-color:var(--neon-dim);">arquivada</span>`:''}</td>
         <td class="tdl" style="${B};font-size:11px;color:var(--text2);">${totalCompra}</td>
         ${vals.map((v,i)=>{
-          if(!v) return `<td style="${B}"><span class="val-empty">—</span></td>`;
+          const selCls=selectedMonth===i?' col-sel':'';
+          if(!v) return `<td class="${selCls}" style="${B}"><span class="val-empty">—</span></td>`;
           const p2=isPaid(p,currentYear,i);
           const n=instNum(p,currentYear,i);
-          return `<td class="${p2?'paid':'unpaid'}" style="${B}text-align:right;" onclick="togglePaidParcela('${p.id}',${currentYear},${i})" title="${p2?'Pago — clique para desmarcar':`${n}/${p.totalQtd} — clique para marcar como pago`}">
+          return `<td class="${p2?'paid':'unpaid'}${selCls}" style="${B}text-align:right;" onclick="togglePaidParcela('${p.id}',${currentYear},${i})" title="${p2?'Pago — clique para desmarcar':`${n}/${p.totalQtd} — clique para marcar como pago`}">
             <span class="cv">${'R$&nbsp;'+v.toFixed(2).replace('.',',')}</span>
             <span class="cl">${p2?'✓ pago':''}</span>
           </td>`;
@@ -1064,7 +1074,7 @@ function renderTableParcelas(){
       </tr>`;
     }).join('');
     // subtotal row per group
-    table+=`<tr><td class="tdl" colspan="2" style="${B}font-weight:600;color:var(--text2);font-size:11px;">Subtotal ${cardObj.name}</td>${monthly.map(v=>`<td style="${B}text-align:right;font-weight:600;color:${v>0?'var(--text)':'var(--text3)'};">${fC(v)}</td>`).join('')}<td style="${B}"></td></tr>`;
+    table+=`<tr><td class="tdl" colspan="2" style="${B}font-weight:600;color:var(--text2);font-size:11px;">Subtotal ${cardObj.name}</td>${monthly.map((v,i)=>`<td class="${selectedMonth===i?'col-sel':''}" style="${B}text-align:right;font-weight:600;color:${v>0?'var(--text)':'var(--text3)'};">${fC(v)}</td>`).join('')}<td style="${B}"></td></tr>`;
     table+='</tbody></table></div>';
 
     return `<div class="cgroup ${isOpen?'open':''}">
@@ -1090,15 +1100,16 @@ function renderTableParcelas(){
 
   // GRAND TOTAL bar across all cards
   const grandMonthly=MESES.map((_,i)=>parcelas.filter(p=>hasInYear(p,currentYear)&&!p.archived).reduce((s,p)=>s+(valsForYear(p,currentYear)[i]||0),0));
+  const grandUnpaid=MESES.reduce((s,_,i)=>s+parcelas.filter(p=>hasInYear(p,currentYear)&&!p.archived).reduce((s2,p)=>{const v=valsForYear(p,currentYear)[i]||0;return s2+(isPaid(p,currentYear,i)?0:v);},0),0);
   html+=`<div class="cgroup open" style="border-color:var(--border2);">
     <div class="cgroup-hdr" style="cursor:default;background:var(--bg2);">
       <span style="width:12px"></span>
       <span class="cgroup-name" style="color:var(--text2);font-size:12px;text-transform:uppercase;letter-spacing:.5px;">Total geral</span>
-      <span class="cgroup-total">${fR(grandMonthly.reduce((a,b)=>a+b,0))}</span>
+      <span class="cgroup-total" title="A pagar">${fR(grandUnpaid)}</span>
     </div>
     <div class="cgroup-body"><div class="tbl-wrap"><table><tbody>
       <tr><td class="tdl" style="${B}font-size:11px;color:var(--text2);width:auto;">Por mês:</td>
-      ${grandMonthly.map((v,i)=>`<td style="${B}text-align:center;padding:7px 6px;">
+      ${grandMonthly.map((v,i)=>`<td class="${selectedMonth===i?'col-sel':''}" style="${B}text-align:center;padding:7px 6px;">
         <div style="font-size:9px;color:var(--text2);text-transform:uppercase;">${MESES[i]}</div>
         <div style="font-size:11px;font-weight:600;color:${v>0?'var(--text)':'var(--text3)'};">${v>0?'R$'+v.toFixed(0):'—'}</div>
       </td>`).join('')}</tr>
