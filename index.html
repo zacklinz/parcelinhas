@@ -592,12 +592,33 @@ auth.onAuthStateChanged(user => {
 function colC() { return db.collection('users').doc(userId).collection('cards'); }
 function colP() { return db.collection('users').doc(userId).collection('parcelas'); }
 function colF() { return db.collection('users').doc(userId).collection('fixos').doc(String(currentYear)).collection('items'); }
+function docFaturas() { return db.collection('users').doc(userId).collection('meta').doc('faturas'); }
 
 // ── LISTENERS ────────────────────────────────────────────────
 function listenAll() {
   listenCards();
   listenParcelas();
   listenFixos();
+  listenFaturas();
+}
+function listenFaturas() {
+  docFaturas().onSnapshot(snap => {
+    if (snap.exists) {
+      somaFatura        = snap.data().faturas  || {};
+      somaFaturaExclude = snap.data().exclude  || {};
+    } else {
+      somaFatura = {}; somaFaturaExclude = {};
+    }
+    renderSoma();
+    renderResumo();
+  });
+}
+let _faturasSaveTimer = null;
+function saveFaturas() {
+  clearTimeout(_faturasSaveTimer);
+  _faturasSaveTimer = setTimeout(() => {
+    docFaturas().set({ faturas: somaFatura, exclude: somaFaturaExclude }).catch(()=>{});
+  }, 600);
 }
 function listenCards() {
   if (unsubC) unsubC();
@@ -1253,8 +1274,8 @@ function toggleSomaFixo(id){ somaSelFixos[id]=!somaSelFixos[id]; renderSoma(); }
 function incrSomaCard(id){ somaMultCards[id]=(somaMultCards[id]||1)+1; renderSoma(); }
 function incrSomaFixo(id){ somaMultFixos[id]=(somaMultFixos[id]||1)+1; renderSoma(); }
 function resetSomaMult(type,id){ if(type==='card') somaMultCards[id]=1; else somaMultFixos[id]=1; renderSoma(); }
-function setSomaFatura(id,month,raw){ const v=parseFloat(String(raw).replace(',','.'))||0; if(!somaFatura[id]) somaFatura[id]={}; somaFatura[id][month]=v; renderSoma(); }
-function toggleFaturaExclude(id){ somaFaturaExclude[id]=!somaFaturaExclude[id]; renderSoma(); renderResumo(); }
+function setSomaFatura(id,month,raw){ const v=parseFloat(String(raw).replace(',','.'))||0; if(!somaFatura[id]) somaFatura[id]={}; somaFatura[id][month]=v; saveFaturas(); renderSoma(); renderResumo(); }
+function toggleFaturaExclude(id){ somaFaturaExclude[id]=!somaFaturaExclude[id]; saveFaturas(); renderSoma(); renderResumo(); }
 
 function renderSoma(){
   const sel=document.getElementById('soma-mes');
