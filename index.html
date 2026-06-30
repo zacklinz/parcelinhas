@@ -533,7 +533,8 @@ let somaSelCards = {};
 let somaSelFixos = {};
 let somaMultCards = {};
 let somaMultFixos = {};
-let somaFatura   = {}; // cardId -> { month -> valor }
+let somaFatura        = {}; // cardId -> { month -> valor }
+let somaFaturaExclude = {}; // cardId -> bool: se true, não reflete no Resumo
 let somaInit     = false;
 let userId      = null;
 let currentYear = 2026;
@@ -886,10 +887,10 @@ function exportCSV(type){
 // ── RENDER ALL ───────────────────────────────────────────────
 function renderAll(){ renderResumo(); renderParcelas(); renderFixos(); renderFatura(); renderSoma(); }
 
-// valor efetivo de um cartão num mês: fatura manual se digitada, senão soma das parcelas
+// valor efetivo de um cartão num mês: fatura manual se digitada e não excluída, senão parcelas
 function effectiveCardMonthVal(cardId, month, year){
   const fatura=(somaFatura[cardId]||{})[month]||0;
-  if(fatura>0) return fatura;
+  if(fatura>0&&!somaFaturaExclude[cardId]) return fatura;
   return parcelas.filter(p=>p.cardId===cardId&&!p.archived&&hasInYear(p,year))
     .reduce((s,p)=>s+(valsForYear(p,year)[month]||0),0);
 }
@@ -1253,6 +1254,7 @@ function incrSomaCard(id){ somaMultCards[id]=(somaMultCards[id]||1)+1; renderSom
 function incrSomaFixo(id){ somaMultFixos[id]=(somaMultFixos[id]||1)+1; renderSoma(); }
 function resetSomaMult(type,id){ if(type==='card') somaMultCards[id]=1; else somaMultFixos[id]=1; renderSoma(); }
 function setSomaFatura(id,month,raw){ const v=parseFloat(String(raw).replace(',','.'))||0; if(!somaFatura[id]) somaFatura[id]={}; somaFatura[id][month]=v; renderSoma(); }
+function toggleFaturaExclude(id){ somaFaturaExclude[id]=!somaFaturaExclude[id]; renderSoma(); renderResumo(); }
 
 function renderSoma(){
   const sel=document.getElementById('soma-mes');
@@ -1280,14 +1282,19 @@ function renderSoma(){
     const mult=somaMultCards[c.id]||1;
     const canSelect=effectiveVal>0;
     const usingFatura=faturaVal>0;
-    const faturaInput=`<div style="display:flex;align-items:center;gap:6px;margin-top:4px;padding-left:22px;">
+    const excluded=!!somaFaturaExclude[c.id];
+    const faturaInput=`<div style="display:flex;align-items:center;gap:6px;margin-top:4px;padding-left:22px;flex-wrap:wrap;">
       <span style="font-size:10px;color:var(--text3);white-space:nowrap;">Fatura total:</span>
       <input type="number" step="0.01" min="0" placeholder="0,00"
         value="${faturaVal>0?faturaVal.toFixed(2):''}"
         onchange="setSomaFatura('${c.id}',${mi},this.value)"
         onclick="event.stopPropagation()"
         style="width:100px;font-size:11px;padding:2px 6px;height:24px;"/>
-      ${usingFatura?`<span style="font-size:10px;color:var(--neon-dim);">usando fatura</span>`:(parcelaVal>0?`<span style="font-size:10px;color:var(--text3);">parcelas: ${fR(parcelaVal)}</span>`:'')}
+      ${usingFatura?`<button onclick="toggleFaturaExclude('${c.id}');event.stopPropagation();" title="${excluded?'Clique para refletir no Resumo':'Clique para não refletir no Resumo'}"
+        style="font-size:10px;padding:1px 7px;border-radius:4px;cursor:pointer;border:1px solid ${excluded?'var(--border2)':'var(--neon-dim)'};background:${excluded?'var(--bg3)':'rgba(57,211,83,0.08)'};color:${excluded?'var(--text3)':'var(--neon-dim)'};">
+        ${excluded?'não reflete no resumo':'reflete no resumo'}
+      </button>`:''}
+      ${!usingFatura&&parcelaVal>0?`<span style="font-size:10px;color:var(--text3);">parcelas: ${fR(parcelaVal)}</span>`:''}
     </div>`;
     return `<div style="border-bottom:1px solid var(--border);padding:6px 0;">
       <label class="soma-item" style="border-bottom:none;padding:2px 0;">
