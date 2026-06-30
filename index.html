@@ -1003,12 +1003,14 @@ function renderTableParcelas(){
   const wrap=document.getElementById('parcelas-groups');
   const B='border-bottom:1px solid var(--border);';
   const TH=`font-size:11px;font-weight:600;color:var(--text2);padding:7px 8px;${B}`;
+  // shared colgroup — same widths across strip + all group tables
+  const CG=`<colgroup><col style="width:22%"/><col style="width:9%"/>${MESES.map(()=>'<col style="width:5.25%"/>').join('')}<col style="width:50px"/></colgroup>`;
 
-  // month totals strip — rendered as a table row to align with group tables below
+  // month totals strip
   const stripTotals=MESES.map((_,i)=>parcelas.filter(p=>hasInYear(p,currentYear)&&!p.archived).reduce((s,p)=>s+(valsForYear(p,currentYear)[i]||0),0));
   const curMonth=new Date().getMonth();
   const MS='padding:5px 2px;text-align:center;cursor:pointer;border-radius:var(--radius-sm);transition:background .15s;';
-  document.getElementById('month-totals-strip').innerHTML=`<div class="tbl-wrap" style="margin-bottom:1rem;"><table style="min-width:900px;"><tbody><tr>
+  document.getElementById('month-totals-strip').innerHTML=`<div class="tbl-wrap" style="margin-bottom:1rem;"><table style="min-width:900px;table-layout:fixed;">${CG}<tbody><tr>
     <td colspan="2" style="padding:0 8px;font-size:11px;color:var(--text3);white-space:nowrap;">Total / mês</td>
     ${MESES.map((m,i)=>{
       const isCur=i===curMonth; const isSel=i===selectedMonth;
@@ -1048,7 +1050,7 @@ function renderTableParcelas(){
     }).join('');
 
     // detailed table
-    let table=`<div class="tbl-wrap"><table>
+    let table=`<div class="tbl-wrap"><table style="min-width:900px;table-layout:fixed;">${CG}
       <thead><tr>
         <th class="thl" style="${TH}">Descrição</th><th class="thl" style="${TH}">Compra total</th>
         ${MESES.map(m=>`<th style="${TH}text-align:right;">${m}</th>`).join('')}
@@ -1112,8 +1114,8 @@ function renderTableParcelas(){
       <span class="cgroup-name" style="color:var(--text2);font-size:12px;text-transform:uppercase;letter-spacing:.5px;">Total geral</span>
       <span class="cgroup-total" title="A pagar">${fR(grandUnpaid)}</span>
     </div>
-    <div class="cgroup-body"><div class="tbl-wrap"><table><tbody>
-      <tr><td class="tdl" style="${B}font-size:11px;color:var(--text2);width:auto;">Por mês:</td>
+    <div class="cgroup-body"><div class="tbl-wrap"><table style="min-width:900px;table-layout:fixed;">${CG}<tbody>
+      <tr><td class="tdl" style="${B}font-size:11px;color:var(--text2);">Por mês:</td><td style="${B}"></td>
       ${grandMonthly.map((v,i)=>`<td class="${selectedMonth===i?'col-sel':''}" style="${B}text-align:center;padding:7px 6px;">
         <div style="font-size:9px;color:var(--text2);text-transform:uppercase;">${MESES[i]}</div>
         <div style="font-size:11px;font-weight:600;color:${v>0?'var(--text)':'var(--text3)'};">${v>0?'R$'+v.toFixed(0):'—'}</div>
