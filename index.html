@@ -886,19 +886,22 @@ function exportCSV(type){
 // ── RENDER ALL ───────────────────────────────────────────────
 function renderAll(){ renderResumo(); renderParcelas(); renderFixos(); renderFatura(); renderSoma(); }
 
+// valor efetivo de um cartão num mês: fatura manual se digitada, senão soma das parcelas
+function effectiveCardMonthVal(cardId, month, year){
+  const fatura=(somaFatura[cardId]||{})[month]||0;
+  if(fatura>0) return fatura;
+  return parcelas.filter(p=>p.cardId===cardId&&!p.archived&&hasInYear(p,year))
+    .reduce((s,p)=>s+(valsForYear(p,year)[month]||0),0);
+}
+
 // ── RENDER: RESUMO ───────────────────────────────────────────
 function renderResumo(){
   const mi=new Date().getMonth();
-  const pVals=parcelas.filter(p=>hasInYear(p,currentYear)&&!p.archived).map(p=>valsForYear(p,currentYear));
-  const pMonth=pVals.reduce((s,v)=>s+(v[mi]||0),0);
+  const pMonth=cards.reduce((s,c)=>s+effectiveCardMonthVal(c.id,mi,currentYear),0);
   const fMonth=fixos.reduce((s,f)=>s+(f.values[mi]||0),0);
   const totalMonth=pMonth+fMonth;
-  // per card breakdown
-  const cardBreakdown=cards.map(c=>{
-    const sum=parcelas.filter(p=>p.cardId===c.id&&!p.archived&&hasInYear(p,currentYear))
-      .reduce((s,p)=>s+(valsForYear(p,currentYear)[mi]||0),0);
-    return {c,sum};
-  }).filter(x=>x.sum>0);
+  // per card breakdown usando valor efetivo (fatura ou parcelas)
+  const cardBreakdown=cards.map(c=>({c,sum:effectiveCardMonthVal(c.id,mi,currentYear)})).filter(x=>x.sum>0);
 
   document.getElementById('hero-mes').innerHTML=`
     <div class="hero">
@@ -914,13 +917,13 @@ function renderResumo(){
       ${pMonth===0&&fMonth===0?`<div style="color:var(--text3);font-size:13px;">Nenhum gasto registrado neste mês.</div>`:''}
     </div>`;
 
-  // annual metrics
-  const pTotals=MESES.map((_,i)=>parcelas.filter(p=>hasInYear(p,currentYear)&&!p.archived).reduce((s,p)=>s+(valsForYear(p,currentYear)[i]||0),0));
+  // annual metrics usando valor efetivo por cartão por mês
+  const pTotals=MESES.map((_,i)=>cards.reduce((s,c)=>s+effectiveCardMonthVal(c.id,i,currentYear),0));
   const fTotals=MESES.map((_,i)=>fixos.reduce((s,f)=>s+(f.values[i]||0),0));
   const allTotals=MESES.map((_,i)=>pTotals[i]+fTotals[i]);
   const totalAno=allTotals.reduce((a,b)=>a+b,0);
   const maiorIdx=allTotals.indexOf(Math.max(...allTotals));
-  // paid progress
+  // paid progress (baseado nas parcelas reais, não nas faturas)
   let ptc=0,ppc=0;
   parcelas.filter(p=>hasInYear(p,currentYear)&&!p.archived).forEach(p=>{valsForYear(p,currentYear).forEach((v,i)=>{if(v>0){ptc++;if(isPaid(p,currentYear,i))ppc++;}});});
   let ftc=0,fpc=0;
@@ -928,16 +931,16 @@ function renderResumo(){
 
   document.getElementById('metrics-resumo').innerHTML=
     [['Total '+currentYear,fR(totalAno)],['Total fixos',fR(fTotals.reduce((a,b)=>a+b,0))],
-     ['Total parcelas',fR(pTotals.reduce((a,b)=>a+b,0))],['Mês mais pesado',allTotals[maiorIdx]>0?MESES[maiorIdx]:'—']]
+     ['Total cartões',fR(pTotals.reduce((a,b)=>a+b,0))],['Mês mais pesado',allTotals[maiorIdx]>0?MESES[maiorIdx]:'—']]
     .map(([l,v])=>`<div class="mc"><div class="lb">${l}</div><div class="vl">${v}</div></div>`).join('')
     +(ptc>0?`<div class="mc prog-card"><div class="prog-hdr"><span class="lb" style="margin:0">Parcelas pagas</span><span class="prog-count">${ppc}/${ptc}</span></div><div class="prog-bar"><div class="prog-fill" style="width:${Math.round(ppc/ptc*100)}%"></div></div><div class="prog-pct">${Math.round(ppc/ptc*100)}%</div></div>`:'')
     +(ftc>0?`<div class="mc prog-card"><div class="prog-hdr"><span class="lb" style="margin:0">Fixos pagos</span><span class="prog-count">${fpc}/${ftc}</span></div><div class="prog-bar"><div class="prog-fill" style="width:${Math.round(fpc/ftc*100)}%"></div></div><div class="prog-pct">${Math.round(fpc/ftc*100)}%</div></div>`:'');
 
-  // combined chart
+  // combined chart usando valor efetivo por cartão
   const wrap=document.getElementById('chart-resumo-wrap');
   if(totalAno===0){wrap.style.display='none';return;}
   wrap.style.display='block';
-  const activeCards=cards.filter(c=>parcelas.some(p=>p.cardId===c.id&&hasInYear(p,currentYear)&&!p.archived));
+  const activeCards=cards.filter(c=>MESES.some((_,i)=>effectiveCardMonthVal(c.id,i,currentYear)>0));
   document.getElementById('legend-resumo').innerHTML=
     (fTotals.some(v=>v>0)?`<span class="leg-item"><span class="leg-dot" style="background:#39d353"></span>Fixos</span>`:'')
     +activeCards.map(c=>`<span class="leg-item"><span class="leg-dot" style="background:${c.color}"></span>${c.name}</span>`).join('');
@@ -945,7 +948,7 @@ function renderResumo(){
   const datasets=[];
   if(fTotals.some(v=>v>0)) datasets.push({label:'Fixos',data:fTotals,backgroundColor:'#39d353',borderRadius:3,borderSkipped:false});
   activeCards.forEach(c=>{
-    const data=MESES.map((_,i)=>Math.round(parcelas.filter(p=>p.cardId===c.id&&!p.archived&&hasInYear(p,currentYear)).reduce((s,p)=>s+(valsForYear(p,currentYear)[i]||0),0)*100)/100);
+    const data=MESES.map((_,i)=>Math.round(effectiveCardMonthVal(c.id,i,currentYear)*100)/100);
     datasets.push({label:c.name,data,backgroundColor:c.color,borderRadius:3,borderSkipped:false});
   });
   // compute stacked totals per month for labels
