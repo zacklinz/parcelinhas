@@ -532,6 +532,7 @@ let somaSelCards = {};
 let somaSelFixos = {};
 let somaMultCards = {};
 let somaMultFixos = {};
+let somaFatura   = {}; // cardId -> valor manual da fatura
 let somaInit     = false;
 let userId      = null;
 let currentYear = 2026;
@@ -1247,6 +1248,7 @@ function toggleSomaFixo(id){ somaSelFixos[id]=!somaSelFixos[id]; renderSoma(); }
 function incrSomaCard(id){ somaMultCards[id]=(somaMultCards[id]||1)+1; renderSoma(); }
 function incrSomaFixo(id){ somaMultFixos[id]=(somaMultFixos[id]||1)+1; renderSoma(); }
 function resetSomaMult(type,id){ if(type==='card') somaMultCards[id]=1; else somaMultFixos[id]=1; renderSoma(); }
+function setSomaFatura(id,raw){ const v=parseFloat(raw.replace(',','.'))||0; somaFatura[id]=v; renderSoma(); }
 
 function renderSoma(){
   const sel=document.getElementById('soma-mes');
@@ -1256,29 +1258,45 @@ function renderSoma(){
   sel.innerHTML=MESES.map((m,i)=>`<option value="${i}"${i===cur?' selected':''}>${m} ${currentYear}</option>`).join('');
   const mi=cur;
 
-  // cards with value in this month
+  // todos os cartões — valor efetivo = fatura manual se preenchida, senão parcelas do mês
   const cardRows=cards.map(c=>{
-    const val=parcelas.filter(p=>p.cardId===c.id&&!p.archived&&hasInYear(p,currentYear))
+    const parcelaVal=parcelas.filter(p=>p.cardId===c.id&&!p.archived&&hasInYear(p,currentYear))
       .reduce((s,p)=>s+(valsForYear(p,currentYear)[mi]||0),0);
-    return {c,val};
-  }).filter(x=>x.val>0);
+    const faturaVal=somaFatura[c.id]||0;
+    const effectiveVal=faturaVal>0?faturaVal:parcelaVal;
+    return {c,parcelaVal,faturaVal,effectiveVal};
+  });
 
   const fixRows=fixos.map(f=>({f,val:f.values[mi]||0})).filter(x=>x.val>0);
 
   const cardsEl=document.getElementById('soma-cards');
   const fixEl=document.getElementById('soma-fixos');
 
-  cardsEl.innerHTML = cardRows.length? cardRows.map(({c,val})=>{
+  cardsEl.innerHTML = cards.length ? cardRows.map(({c,parcelaVal,faturaVal,effectiveVal})=>{
     const mult=somaMultCards[c.id]||1;
-    return `<label class="soma-item">
-      <input type="checkbox" ${somaSelCards[c.id]?'checked':''} onchange="toggleSomaCard('${c.id}')"/>
-      <span class="si-swatch" style="background:${c.color}"></span>
-      <span class="si-name">${c.name}</span>
-      <span class="si-val">${fR(val)}</span>
-      ${mult>1?`<span class="si-mult" onclick="resetSomaMult('card','${c.id}');event.preventDefault();event.stopPropagation();" title="Clique para resetar">×${mult}</span>`:''}
-      <button class="mult-btn" onclick="incrSomaCard('${c.id}');event.preventDefault();event.stopPropagation();" title="Duplicar (atraso)">+1</button>
-    </label>`;
-  }).join('') : '<div class="soma-empty">Nenhum cartão com parcela neste mês.</div>';
+    const canSelect=effectiveVal>0;
+    const usingFatura=faturaVal>0;
+    const faturaInput=`<div style="display:flex;align-items:center;gap:6px;margin-top:4px;padding-left:22px;">
+      <span style="font-size:10px;color:var(--text3);white-space:nowrap;">Fatura total:</span>
+      <input type="number" step="0.01" min="0" placeholder="0,00"
+        value="${faturaVal>0?faturaVal.toFixed(2):''}"
+        onchange="setSomaFatura('${c.id}',this.value)"
+        onclick="event.stopPropagation()"
+        style="width:100px;font-size:11px;padding:2px 6px;height:24px;"/>
+      ${usingFatura?`<span style="font-size:10px;color:var(--neon-dim);">usando fatura</span>`:(parcelaVal>0?`<span style="font-size:10px;color:var(--text3);">parcelas: ${fR(parcelaVal)}</span>`:'')}
+    </div>`;
+    return `<div style="border-bottom:1px solid var(--border);padding:6px 0;">
+      <label class="soma-item" style="border-bottom:none;padding:2px 0;" ${!canSelect?'style="opacity:.5"':''}>
+        <input type="checkbox" ${somaSelCards[c.id]&&canSelect?'checked':''} ${!canSelect?'disabled':''} onchange="toggleSomaCard('${c.id}')"/>
+        <span class="si-swatch" style="background:${c.color}"></span>
+        <span class="si-name">${c.name}</span>
+        <span class="si-val" style="${usingFatura?'color:var(--neon);':''}">${effectiveVal>0?fR(effectiveVal):'<span style="color:var(--text3);font-size:11px;">sem valor</span>'}</span>
+        ${mult>1?`<span class="si-mult" onclick="resetSomaMult('card','${c.id}');event.preventDefault();event.stopPropagation();" title="Clique para resetar">×${mult}</span>`:''}
+        ${canSelect?`<button class="mult-btn" onclick="incrSomaCard('${c.id}');event.preventDefault();event.stopPropagation();" title="Duplicar (atraso)">+1</button>`:''}
+      </label>
+      ${faturaInput}
+    </div>`;
+  }).join('') : '<div class="soma-empty">Nenhum cartão cadastrado.</div>';
 
   fixEl.innerHTML = fixRows.length? fixRows.map(({f,val})=>{
     const mult=somaMultFixos[f.id]||1;
@@ -1291,9 +1309,9 @@ function renderSoma(){
     </label>`;
   }).join('') : '<div class="soma-empty">Nenhuma conta fixa neste mês.</div>';
 
-  // compute total of selection using multipliers
+  // compute total of selection using multipliers + fatura override
   let total=0; const parts=[];
-  cardRows.forEach(({c,val})=>{ if(somaSelCards[c.id]){ const m=somaMultCards[c.id]||1; total+=val*m; parts.push({name:c.name+(m>1?` ×${m}`:''),color:c.color,val:val*m}); } });
+  cardRows.forEach(({c,effectiveVal})=>{ if(somaSelCards[c.id]&&effectiveVal>0){ const m=somaMultCards[c.id]||1; total+=effectiveVal*m; parts.push({name:c.name+(m>1?` ×${m}`:''),color:c.color,val:effectiveVal*m}); } });
   fixRows.forEach(({f,val})=>{ if(somaSelFixos[f.id]){ const m=somaMultFixos[f.id]||1; total+=val*m; parts.push({name:f.desc+(m>1?` ×${m}`:''),color:'#39d353',val:val*m}); } });
 
   document.getElementById('soma-result-label').textContent=`Total selecionado — ${MESES[mi]} ${currentYear}`;
