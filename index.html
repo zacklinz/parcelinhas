@@ -610,7 +610,9 @@ function listenFaturas() {
     } else {
       somaFatura = {}; somaFaturaExclude = {};
     }
-    renderSoma();
+    // don't replace DOM while user is actively typing in a fatura input
+    const active = document.activeElement;
+    if (!active || !active.dataset.faturaInput) renderSoma();
     renderResumo();
   });
 }
@@ -1281,7 +1283,7 @@ function toggleSomaFixo(id){ somaSelFixos[id]=!somaSelFixos[id]; renderSoma(); }
 function incrSomaCard(id){ somaMultCards[id]=(somaMultCards[id]||1)+1; renderSoma(); }
 function incrSomaFixo(id){ somaMultFixos[id]=(somaMultFixos[id]||1)+1; renderSoma(); }
 function resetSomaMult(type,id){ if(type==='card') somaMultCards[id]=1; else somaMultFixos[id]=1; renderSoma(); }
-function setSomaFatura(id,month,raw){ const v=parseFloat(String(raw).replace(',','.'))||0; if(!somaFatura[id]) somaFatura[id]={}; somaFatura[id][month]=v; saveFaturas(); renderSoma(); renderResumo(); }
+function setSomaFatura(id,month,raw){ const v=parseFloat(String(raw).replace(',','.'))||0; if(!somaFatura[id]) somaFatura[id]={}; somaFatura[id][month]=v; saveFaturas(); renderResumo(); }
 function toggleFaturaExclude(id){ somaFaturaExclude[id]=!somaFaturaExclude[id]; saveFaturas(); renderSoma(); renderResumo(); }
 
 function renderSoma(){
@@ -1315,8 +1317,9 @@ function renderSoma(){
       <span style="font-size:10px;color:var(--text3);white-space:nowrap;">Fatura total:</span>
       <input type="number" step="0.01" min="0" placeholder="0,00"
         value="${faturaVal>0?faturaVal.toFixed(2):''}"
-        onchange="setSomaFatura('${c.id}',${mi},this.value)"
+        oninput="setSomaFatura('${c.id}',${mi},this.value)"
         onclick="event.stopPropagation()"
+        data-fatura-input="1"
         style="width:100px;font-size:11px;padding:2px 6px;height:24px;"/>
       ${usingFatura?`<button onclick="toggleFaturaExclude('${c.id}');event.stopPropagation();" title="${excluded?'Clique para refletir no Resumo':'Clique para não refletir no Resumo'}"
         style="font-size:10px;padding:1px 7px;border-radius:4px;cursor:pointer;border:1px solid ${excluded?'var(--border2)':'var(--neon-dim)'};background:${excluded?'var(--bg3)':'rgba(57,211,83,0.08)'};color:${excluded?'var(--text3)':'var(--neon-dim)'};">
