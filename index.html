@@ -1100,11 +1100,12 @@ function renderTableParcelas(){
 
   // GRAND TOTAL bar across all cards
   const grandMonthly=MESES.map((_,i)=>parcelas.filter(p=>hasInYear(p,currentYear)&&!p.archived).reduce((s,p)=>s+(valsForYear(p,currentYear)[i]||0),0));
+  const grandUnpaid=MESES.reduce((s,_,i)=>s+parcelas.filter(p=>hasInYear(p,currentYear)&&!p.archived).reduce((s2,p)=>{const v=valsForYear(p,currentYear)[i]||0;return s2+(isPaid(p,currentYear,i)?0:v);},0),0);
   html+=`<div class="cgroup open" style="border-color:var(--border2);">
     <div class="cgroup-hdr" style="cursor:default;background:var(--bg2);">
       <span style="width:12px"></span>
       <span class="cgroup-name" style="color:var(--text2);font-size:12px;text-transform:uppercase;letter-spacing:.5px;">Total geral</span>
-      <span class="cgroup-total">${fR(grandMonthly.reduce((a,b)=>a+b,0))}</span>
+      <span class="cgroup-total" title="A pagar">${fR(grandUnpaid)}</span>
     </div>
     <div class="cgroup-body"><div class="tbl-wrap"><table><tbody>
       <tr><td class="tdl" style="${B}font-size:11px;color:var(--text2);width:auto;">Por mês:</td>
