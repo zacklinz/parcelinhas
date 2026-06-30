@@ -504,6 +504,14 @@ input[type=color]{width:36px;height:28px;padding:2px;border-radius:4px;cursor:po
 </div>
 
 <script>
+// REGRA: qualquer valor de texto vindo do usuário (desc, name, etc) que for
+// inserido em innerHTML ou em atributo HTML via template literal DEVE passar
+// por esc(). Novos campos de texto livre adicionados no futuro também devem
+// seguir essa regra.
+function esc(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
 // ── CONFIG ───────────────────────────────────────────────────
 const firebaseConfig = {
   apiKey:            "AIzaSyBfN00QYYTgiaOFwTquGkL4TUZVbAAtATA",
@@ -620,7 +628,7 @@ let _faturasSaveTimer = null;
 function saveFaturas() {
   clearTimeout(_faturasSaveTimer);
   _faturasSaveTimer = setTimeout(() => {
-    docFaturas().set({ faturas: somaFatura, exclude: somaFaturaExclude }).catch(()=>{});
+    docFaturas().set({ faturas: somaFatura, exclude: somaFaturaExclude }).catch(()=>sv('Erro ao salvar.','err'));
   }, 600);
 }
 function listenCards() {
@@ -679,8 +687,7 @@ async function addCard() {
 async function deleteCard(id) {
   if(!confirm('Remover este cartão? As parcelas associadas a ele não serão apagadas.')) return;
   sv('Removendo…','on');
-  await colC().doc(id).delete();
-  sv('Removido ✓','on');
+  try{await colC().doc(id).delete();sv('Removido ✓','on');}catch(e){sv('Erro ao salvar.','err');}
 }
 function populateCardSelect() {
   const sel=document.getElementById('p-cartao');
@@ -689,7 +696,7 @@ function populateCardSelect() {
     sel.innerHTML='<option value="">— Crie um cartão primeiro —</option>';
     return;
   }
-  sel.innerHTML=cards.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  sel.innerHTML=cards.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   if(cur && cards.find(c=>c.id===cur)) sel.value=cur;
 }
 function cardById(id){ return cards.find(c=>c.id===id)||{name:id,color:'#8b949e'}; }
@@ -731,14 +738,12 @@ async function addParcela() {
 async function deleteParcela(id) {
   if(!confirm('Remover esta parcela permanentemente?')) return;
   sv('Removendo…','on');
-  await colP().doc(id).delete();
-  sv('Removido ✓','on');
+  try{await colP().doc(id).delete();sv('Removido ✓','on');}catch(e){sv('Erro ao salvar.','err');}
 }
 
 async function archiveParcela(id, val) {
   sv('Salvando…','on');
-  await colP().doc(id).update({archived:val});
-  sv(val?'Arquivada ✓':'Restaurada ✓','on');
+  try{await colP().doc(id).update({archived:val});sv(val?'Arquivada ✓':'Restaurada ✓','on');}catch(e){sv('Erro ao salvar.','err');}
 }
 
 async function togglePaidParcela(id, year, month) {
@@ -793,8 +798,8 @@ async function addFixo() {
 }
 async function deleteFixo(id){
   if(!confirm('Remover este gasto fixo?')) return;
-  await colF().doc(id).delete();
-  sv('Removido ✓','on');
+  sv('Removendo…','on');
+  try{await colF().doc(id).delete();sv('Removido ✓','on');}catch(e){sv('Erro ao salvar.','err');}
 }
 async function togglePaidFixo(id,i){
   const item=fixos.find(f=>f.id===id);if(!item)return;
@@ -830,9 +835,9 @@ function openEditParcela(id) {
   document.getElementById('edit-modal-title').textContent='Editar parcela';
   document.getElementById('edit-modal-body').innerHTML=`
     <div class="fg" style="grid-template-columns:1fr 1fr;gap:10px;">
-      <div class="fl" style="grid-column:1/-1"><label>Descrição</label><input type="text" id="em-desc" value="${p.desc}"/></div>
+      <div class="fl" style="grid-column:1/-1"><label>Descrição</label><input type="text" id="em-desc" value="${esc(p.desc)}"/></div>
       <div class="fl"><label>Valor / parcela (R$)</label><input type="number" id="em-valor" value="${p.valuePer}" step="0.01"/></div>
-      <div class="fl"><label>Cartão</label><select id="em-cartao">${cards.map(c=>`<option value="${c.id}"${c.id===p.cardId?' selected':''}>${c.name}</option>`).join('')}</select></div>
+      <div class="fl"><label>Cartão</label><select id="em-cartao">${cards.map(c=>`<option value="${c.id}"${c.id===p.cardId?' selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
       <div class="fl"><label>Total de parcelas</label><input type="number" id="em-qtd" value="${p.totalQtd}" min="1" max="60"/></div>
       <div class="fl"><label>Mês início</label><select id="em-inicio">${MESES.map((m,i)=>`<option value="${i}"${i===p.startMonth?' selected':''}>${m}</option>`).join('')}</select></div>
     </div>`;
@@ -844,7 +849,7 @@ function openEditFixo(id) {
   document.getElementById('edit-modal-title').textContent='Editar gasto fixo';
   document.getElementById('edit-modal-body').innerHTML=`
     <div class="fg" style="grid-template-columns:1fr 1fr;gap:10px;">
-      <div class="fl" style="grid-column:1/-1"><label>Descrição</label><input type="text" id="em-desc" value="${f.desc}"/></div>
+      <div class="fl" style="grid-column:1/-1"><label>Descrição</label><input type="text" id="em-desc" value="${esc(f.desc)}"/></div>
       <div class="fl"><label>Novo valor padrão (R$)</label><input type="number" id="em-fvalor" value="${f.defaultValue}" step="0.01"/></div>
       <div class="fl" style="display:flex;align-items:flex-end;padding-bottom:2px;"><label style="font-size:11px;color:var(--text2)"><input type="checkbox" id="em-apply-all" checked style="width:auto;margin-right:6px;"/> Aplicar a todos os meses</label></div>
     </div>`;
@@ -942,7 +947,7 @@ function renderResumo(){
       ${fMonth>0?`<div class="hero-row"><span class="hero-label">Gastos fixos</span><span class="hero-val">${fR(fMonth)}</span></div>`:''}
       ${cardBreakdown.map(x=>`<div class="hero-row">
         <span class="hero-label" style="display:flex;align-items:center;gap:6px;">
-          <span style="width:8px;height:8px;border-radius:2px;background:${x.c.color};display:inline-block;"></span>${x.c.name}
+          <span style="width:8px;height:8px;border-radius:2px;background:${x.c.color};display:inline-block;"></span>${esc(x.c.name)}
         </span>
         <span class="hero-val">${fR(x.sum)}</span>
       </div>`).join('')}
@@ -975,7 +980,7 @@ function renderResumo(){
   const activeCards=cards.filter(c=>MESES.some((_,i)=>effectiveCardMonthVal(c.id,i,currentYear)>0));
   document.getElementById('legend-resumo').innerHTML=
     (fTotals.some(v=>v>0)?`<span class="leg-item"><span class="leg-dot" style="background:#39d353"></span>Fixos</span>`:'')
-    +activeCards.map(c=>`<span class="leg-item"><span class="leg-dot" style="background:${c.color}"></span>${c.name}</span>`).join('');
+    +activeCards.map(c=>`<span class="leg-item"><span class="leg-dot" style="background:${c.color}"></span>${esc(c.name)}</span>`).join('');
   if(chartR){chartR.destroy();chartR=null;}
   const barColors=color=>MESES.map((_,i)=>i===mi?color:hexToRgba(color,0.35));
   const datasets=[];
@@ -1100,7 +1105,7 @@ function renderTableParcelas(){
       const totalCompra=fR(p.valuePer*p.totalQtd);
       const isArch=p.archived;
       return `<tr style="opacity:${isArch?'0.5':'1'}">
-        <td class="tdl" style="${B}">${p.desc}${p.totalQtd>1?`<span class="badge">${p.totalQtd}x</span>`:''}${isArch?`<span class="badge" style="color:var(--neon-dim);border-color:var(--neon-dim);">arquivada</span>`:''}</td>
+        <td class="tdl" style="${B}">${esc(p.desc)}${p.totalQtd>1?`<span class="badge">${p.totalQtd}x</span>`:''}${isArch?`<span class="badge" style="color:var(--neon-dim);border-color:var(--neon-dim);">arquivada</span>`:''}</td>
         <td class="tdl" style="${B};font-size:11px;color:var(--text2);">${totalCompra}</td>
         ${vals.map((v,i)=>{
           const selCls=selectedMonth===i?' col-sel':'';
@@ -1120,14 +1125,14 @@ function renderTableParcelas(){
       </tr>`;
     }).join('');
     // subtotal row per group
-    table+=`<tr><td class="tdl" colspan="2" style="${B}font-weight:600;color:var(--text2);font-size:11px;">Subtotal ${cardObj.name}</td>${monthly.map((v,i)=>`<td class="${selectedMonth===i?'col-sel':''}" style="${B}text-align:right;font-weight:600;color:${v>0?'var(--text)':'var(--text3)'};">${fC(v)}</td>`).join('')}<td style="${B}"></td></tr>`;
+    table+=`<tr><td class="tdl" colspan="2" style="${B}font-weight:600;color:var(--text2);font-size:11px;">Subtotal ${esc(cardObj.name)}</td>${monthly.map((v,i)=>`<td class="${selectedMonth===i?'col-sel':''}" style="${B}text-align:right;font-weight:600;color:${v>0?'var(--text)':'var(--text3)'};">${fC(v)}</td>`).join('')}<td style="${B}"></td></tr>`;
     table+='</tbody></table></div>';
 
     return `<div class="cgroup ${isOpen?'open':''}">
       <div class="cgroup-hdr" onclick="toggleGroup('${cardKey}')">
         <span class="cgroup-chevron">▶</span>
         <span class="cgroup-swatch" style="background:${cardObj.color}"></span>
-        <span class="cgroup-name">${cardObj.name}</span>
+        <span class="cgroup-name">${esc(cardObj.name)}</span>
         <span class="cgroup-months">${miniMonths}</span>
         <span class="cgroup-total" title="A pagar">${fR(unpaidTotal)}</span>
       </div>
@@ -1170,7 +1175,7 @@ function renderChartParcelas(){
   if(!visible.length){wrap.style.display='none';return;}
   wrap.style.display='block';
   const activeCards=cards.filter(c=>visible.some(p=>p.cardId===c.id));
-  document.getElementById('legend-parcelas').innerHTML=activeCards.map(c=>`<span class="leg-item"><span class="leg-dot" style="background:${c.color}"></span>${c.name}</span>`).join('');
+  document.getElementById('legend-parcelas').innerHTML=activeCards.map(c=>`<span class="leg-item"><span class="leg-dot" style="background:${c.color}"></span>${esc(c.name)}</span>`).join('');
   if(chartP){chartP.destroy();chartP=null;}
   const datasets=activeCards.map(c=>({
     label:c.name,backgroundColor:c.color,borderRadius:4,borderSkipped:false,
@@ -1212,7 +1217,7 @@ function renderTableFixos(){
     html+='<tbody>'+fixos.map(f=>{
       const paid=f.paid||Array(12).fill(false);
       return `<tr>
-        <td class="tdl" style="${B}">${f.desc}</td>
+        <td class="tdl" style="${B}">${esc(f.desc)}</td>
         ${f.values.map((v,i)=>{
           const p=paid[i];
           if(p) return `<td class="paid" style="${B}text-align:right;" ondblclick="togglePaidFixo('${f.id}',${i})" title="Pago — duplo clique para desmarcar"><span class="cv">${'R$&nbsp;'+v.toFixed(2).replace('.',',')}</span><span class="cl">✓ pago</span></td>`;
@@ -1249,7 +1254,7 @@ function renderCards(){
   document.getElementById('card-list').innerHTML=cards.map(c=>`
     <div class="card-item">
       <span class="card-swatch" style="background:${c.color}"></span>
-      <span class="card-name">${c.name}</span>
+      <span class="card-name">${esc(c.name)}</span>
       <button class="del-btn" onclick="deleteCard('${c.id}')" title="Remover">&times;</button>
     </div>`).join('');
 }
@@ -1266,7 +1271,7 @@ function renderFatura(){
     return `<div class="fatura-card">
       <div class="fatura-card-hdr">
         <span class="card-swatch" style="background:${c.color}"></span>
-        <span class="fatura-card-name">${c.name}</span>
+        <span class="fatura-card-name">${esc(c.name)}</span>
         <span class="fatura-card-total">${fR(total)}</span>
       </div>
       <div class="fatura-months">
@@ -1334,7 +1339,7 @@ function renderSoma(){
       <label class="soma-item" style="border-bottom:none;padding:2px 0;">
         <input type="checkbox" ${somaSelCards[c.id]&&canSelect?'checked':''} ${!canSelect?'disabled':''} onchange="toggleSomaCard('${c.id}')"/>
         <span class="si-swatch" style="background:${c.color}"></span>
-        <span class="si-name" style="${!canSelect?'opacity:.45':''}"> ${c.name}</span>
+        <span class="si-name" style="${!canSelect?'opacity:.45':''}"> ${esc(c.name)}</span>
         <span class="si-val" style="${usingFatura?'color:var(--neon);':''}">${effectiveVal>0?fR(effectiveVal):'<span style="color:var(--text3);font-size:11px;">—</span>'}</span>
         ${mult>1?`<span class="si-mult" onclick="resetSomaMult('card','${c.id}');event.preventDefault();event.stopPropagation();" title="Clique para resetar">×${mult}</span>`:''}
         ${canSelect?`<button class="mult-btn" onclick="incrSomaCard('${c.id}');event.preventDefault();event.stopPropagation();" title="Duplicar (atraso)">+1</button>`:''}
@@ -1347,7 +1352,7 @@ function renderSoma(){
     const mult=somaMultFixos[f.id]||1;
     return `<label class="soma-item">
       <input type="checkbox" ${somaSelFixos[f.id]?'checked':''} onchange="toggleSomaFixo('${f.id}')"/>
-      <span class="si-name">${f.desc}</span>
+      <span class="si-name">${esc(f.desc)}</span>
       <span class="si-val">${fR(val)}</span>
       ${mult>1?`<span class="si-mult" onclick="resetSomaMult('fixo','${f.id}');event.preventDefault();event.stopPropagation();" title="Clique para resetar">×${mult}</span>`:''}
       <button class="mult-btn" onclick="incrSomaFixo('${f.id}');event.preventDefault();event.stopPropagation();" title="Duplicar (atraso)">+1</button>
@@ -1356,8 +1361,8 @@ function renderSoma(){
 
   // compute total of selection using multipliers + fatura override
   let total=0; const parts=[];
-  cardRows.forEach(({c,effectiveVal})=>{ if(somaSelCards[c.id]&&effectiveVal>0){ const m=somaMultCards[c.id]||1; total+=effectiveVal*m; parts.push({name:c.name+(m>1?` ×${m}`:''),color:c.color,val:effectiveVal*m}); } });
-  fixRows.forEach(({f,val})=>{ if(somaSelFixos[f.id]){ const m=somaMultFixos[f.id]||1; total+=val*m; parts.push({name:f.desc+(m>1?` ×${m}`:''),color:'#39d353',val:val*m}); } });
+  cardRows.forEach(({c,effectiveVal})=>{ if(somaSelCards[c.id]&&effectiveVal>0){ const m=somaMultCards[c.id]||1; total+=effectiveVal*m; parts.push({name:esc(c.name)+(m>1?` ×${m}`:''),color:c.color,val:effectiveVal*m}); } });
+  fixRows.forEach(({f,val})=>{ if(somaSelFixos[f.id]){ const m=somaMultFixos[f.id]||1; total+=val*m; parts.push({name:esc(f.desc)+(m>1?` ×${m}`:''),color:'#39d353',val:val*m}); } });
 
   document.getElementById('soma-result-label').textContent=`Total selecionado — ${MESES[mi]} ${currentYear}`;
   document.getElementById('soma-result-total').textContent=fR(total);
