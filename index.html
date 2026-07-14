@@ -337,6 +337,7 @@ input[type=color]{width:36px;height:28px;padding:2px;border-radius:4px;cursor:po
     <div class="user-info">
       <img id="user-photo" src="" alt=""/>
       <span id="user-name"></span>
+      <button class="btn-sm" onclick="exportarDados()" title="Exportar dados para análise">⬇ Exportar</button>
       <button class="btn-sm" onclick="signOut()">Sair</button>
     </div>
   </header>
@@ -581,6 +582,121 @@ function fC(v)  { return v>0?'R$&nbsp;'+v.toFixed(2).replace('.',','):'<span cla
 // ── AUTH ─────────────────────────────────────────────────────
 function signIn()  { auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); }
 function signOut() { [unsubC,unsubP,unsubF].forEach(u=>u&&u()); auth.signOut(); }
+
+function exportarDados() {
+  const MESES_NOME = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  const anos = [...new Set([
+    ...parcelas.map(p => p.startYear),
+    ...parcelas.map(p => p.startYear + Math.floor((p.startMonth + p.totalQtd - 1) / 12)),
+    currentYear
+  ])].sort();
+
+  // Cartões com nome e cor
+  const cartoesMap = Object.fromEntries(cards.map(c => [c.id, c]));
+
+  // Parcelas enriquecidas com parcelas por mês e status de pagamento
+  const parcelasExport = parcelas.map(p => {
+    const card = cartoesMap[p.cardId] || {};
+    const mesesAtivos = [];
+    for (const ano of anos) {
+      if (!hasInYear(p, ano)) continue;
+      const vals = valsForYear(p, ano);
+      for (let m = 0; m < 12; m++) {
+        if (vals[m] > 0) {
+          mesesAtivos.push({
+            ano,
+            mes: m + 1,
+            mes_nome: MESES_NOME[m],
+            parcela_num: instNum(p, ano, m),
+            valor: vals[m],
+            pago: isPaid(p, ano, m)
+          });
+        }
+      }
+    }
+    return {
+      id: p.id,
+      descricao: p.desc,
+      cartao: card.name || p.cardId,
+      valor_parcela: p.valuePer,
+      total_parcelas: p.totalQtd,
+      inicio_ano: p.startYear,
+      inicio_mes: p.startMonth + 1,
+      inicio_mes_nome: MESES_NOME[p.startMonth],
+      valor_total: p.valuePer * p.totalQtd,
+      arquivada: !!p.archived,
+      meses: mesesAtivos
+    };
+  });
+
+  // Gastos fixos com valor mensal e anual
+  const fixosExport = fixos.map(f => ({
+    id: f.id,
+    descricao: f.desc,
+    valor_mensal: f.value,
+    valor_anual: f.value * 12
+  }));
+
+  // Faturas manuais por cartão/ano/mês
+  const faturasExport = [];
+  for (const [cardId, porAno] of Object.entries(somaFatura)) {
+    const card = cartoesMap[cardId] || {};
+    for (const [ano, porMes] of Object.entries(porAno)) {
+      for (const [mes, valor] of Object.entries(porMes)) {
+        if (valor > 0) {
+          faturasExport.push({
+            cartao: card.name || cardId,
+            ano: Number(ano),
+            mes: Number(mes) + 1,
+            mes_nome: MESES_NOME[Number(mes)],
+            fatura_manual: valor,
+            exclui_parcelas_do_resumo: !!somaFaturaExclude[cardId]
+          });
+        }
+      }
+    }
+  }
+
+  // Resumo anual: total por ano e por mês
+  const resumoAnual = anos.map(ano => {
+    const meses = Array.from({length: 12}, (_, m) => {
+      const totalCartoes = cards.reduce((s, c) => {
+        return s + effectiveCardMonthVal(c.id, m, ano);
+      }, 0);
+      const totalFixos = fixos.reduce((s, f) => s + f.value, 0);
+      return {
+        mes: m + 1,
+        mes_nome: MESES_NOME[m],
+        total_cartoes: +totalCartoes.toFixed(2),
+        total_fixos: +totalFixos.toFixed(2),
+        total_geral: +(totalCartoes + totalFixos).toFixed(2)
+      };
+    }).filter(m => m.total_geral > 0);
+    return {
+      ano,
+      meses,
+      total_ano: +(meses.reduce((s, m) => s + m.total_geral, 0)).toFixed(2)
+    };
+  });
+
+  const payload = {
+    exportado_em: new Date().toISOString(),
+    ano_atual: currentYear,
+    cartoes: cards.map(c => ({id: c.id, nome: c.name, cor: c.color})),
+    parcelas: parcelasExport,
+    gastos_fixos: fixosExport,
+    faturas_manuais: faturasExport,
+    resumo_anual: resumoAnual
+  };
+
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `parcelinhas-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 auth.onAuthStateChanged(user => {
   if (user) {
     userId = user.uid;
